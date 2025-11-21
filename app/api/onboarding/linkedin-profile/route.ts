@@ -1,6 +1,10 @@
 import { auth } from '@clerk/nextjs';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { apifyClient } from '@/lib/apify/client';
+import { processLinkedInProfile, validateLinkedInUrl, normalizeLinkedInUrl } from '@/lib/apify/processors';
+import { withRetry } from '@/lib/apify/retry';
+import { handleApifyError } from '@/lib/apify/errors';
 
 export async function POST(req: NextRequest) {
   try {
@@ -12,85 +16,65 @@ export async function POST(req: NextRequest) {
 
     const { profileUrl }: { profileUrl: string } = await req.json();
 
-    if (!profileUrl) {
-      return NextResponse.json({ error: 'Profile URL is required' }, { status: 400 });
+    // Validate URL
+    if (!validateLinkedInUrl(profileUrl)) {
+      return NextResponse.json(
+        { error: 'Invalid LinkedIn profile URL' },
+        { status: 400 }
+      );
     }
+
+    const normalizedUrl = normalizeLinkedInUrl(profileUrl);
 
     const supabase = await createClient();
 
-    // Get user from database
-    const { data: user, error: userError } = await supabase
+    const { data: user } = await supabase
       .from('users')
       .select('*')
       .eq('clerk_user_id', userId)
       .single();
 
-    if (userError || !user) {
+    if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    // Call Apify LinkedIn Profile API
-    const apifyResponse = await fetch(
-      `https://api.apify.com/v2/acts/apimaestro~linkedin-profile-detail/run-sync-get-dataset-items?token=${process.env.APIFY_API_KEY}`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          profileUrls: [profileUrl],
-        }),
-      }
+    // Fetch with retry logic
+    const result = await withRetry(
+      () => apifyClient.fetchLinkedInProfile(normalizedUrl),
+      { maxRetries: 2 }
     );
 
-    if (!apifyResponse.ok) {
+    if (!result.success || !result.data || result.data.length === 0) {
       return NextResponse.json(
-        { error: 'Failed to fetch LinkedIn profile' },
-        { status: 500 }
-      );
-    }
-
-    const profileData = await apifyResponse.json();
-
-    if (!profileData || profileData.length === 0) {
-      return NextResponse.json(
-        { error: 'No profile data found' },
+        { error: result.error || 'No profile data found' },
         { status: 404 }
       );
     }
 
-    const profile = profileData[0];
+    const processedProfile = processLinkedInProfile(result.data[0], normalizedUrl);
 
-    // Save profile to database
-    const { data: savedProfile, error: profileError } = await supabase
+    // Save to database
+    const { data: savedProfile } = await supabase
       .from('linkedin_profiles')
       .upsert({
         user_id: user.id,
-        profile_url: profileUrl,
-        full_name: profile.fullName || null,
-        headline: profile.headline || null,
-        about: profile.about || null,
-        location: profile.location || null,
-        followers_count: profile.followersCount || 0,
-        connections_count: profile.connectionsCount || 0,
-        profile_image_url: profile.profilePicture || null,
-        raw_data: profile,
+        profile_url: normalizedUrl,
+        full_name: processedProfile.fullName,
+        headline: processedProfile.headline,
+        about: processedProfile.about,
+        location: processedProfile.location,
+        followers_count: processedProfile.followersCount,
+        connections_count: processedProfile.connectionsCount,
+        profile_image_url: processedProfile.profileImageUrl,
+        raw_data: result.data[0],
       })
       .select()
       .single();
 
-    if (profileError) {
-      return NextResponse.json(
-        { error: 'Failed to save profile' },
-        { status: 500 }
-      );
-    }
-
-    // Update user onboarding status
     await supabase
       .from('users')
       .update({
-        linkedin_profile_url: profileUrl,
+        linkedin_profile_url: normalizedUrl,
         onboarding_status: 'profile_fetched',
       })
       .eq('id', user.id);
@@ -100,10 +84,12 @@ export async function POST(req: NextRequest) {
       profile: savedProfile,
     });
   } catch (error) {
-    console.error('LinkedIn profile fetch error:', error);
+    const apifyError = handleApifyError(error);
+    console.error('LinkedIn profile fetch error:', apifyError);
+    
     return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
+      { error: apifyError.message },
+      { status: apifyError.statusCode || 500 }
     );
   }
 }

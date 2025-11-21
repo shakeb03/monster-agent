@@ -2,6 +2,10 @@ import { auth } from '@clerk/nextjs';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { generateEmbedding } from '@/lib/openai/embeddings';
+import { apifyClient } from '@/lib/apify/client';
+import { processLinkedInPost, validateLinkedInUrl, normalizeLinkedInUrl } from '@/lib/apify/processors';
+import { withRetry } from '@/lib/apify/retry';
+import { handleApifyError } from '@/lib/apify/errors';
 
 export async function POST(req: NextRequest) {
   try {
@@ -13,9 +17,15 @@ export async function POST(req: NextRequest) {
 
     const { profileUrl }: { profileUrl: string } = await req.json();
 
-    if (!profileUrl) {
-      return NextResponse.json({ error: 'Profile URL is required' }, { status: 400 });
+    // Validate URL
+    if (!validateLinkedInUrl(profileUrl)) {
+      return NextResponse.json(
+        { error: 'Invalid LinkedIn profile URL' },
+        { status: 400 }
+      );
     }
+
+    const normalizedUrl = normalizeLinkedInUrl(profileUrl);
 
     const supabase = await createClient();
 
@@ -30,33 +40,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    // Call Apify LinkedIn Posts API
-    const apifyResponse = await fetch(
-      `https://api.apify.com/v2/acts/supreme_coder~linkedin-post/run-sync-get-dataset-items?token=${process.env.APIFY_API_KEY}`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          profileUrl: profileUrl,
-          maxPosts: 50, // Fetch last 50 posts
-        }),
-      }
+    // Fetch with retry logic
+    const result = await withRetry(
+      () => apifyClient.fetchLinkedInPosts(normalizedUrl, 50),
+      { maxRetries: 2 }
     );
 
-    if (!apifyResponse.ok) {
+    if (!result.success || !result.data || result.data.length === 0) {
       return NextResponse.json(
-        { error: 'Failed to fetch LinkedIn posts' },
-        { status: 500 }
-      );
-    }
-
-    const postsData = await apifyResponse.json();
-
-    if (!postsData || postsData.length === 0) {
-      return NextResponse.json(
-        { error: 'No posts found' },
+        { error: result.error || 'No posts found' },
         { status: 404 }
       );
     }
@@ -64,34 +56,24 @@ export async function POST(req: NextRequest) {
     // Process and save posts with embeddings
     const savedPosts = [];
     
-    for (const post of postsData) {
-      const postText = post.text || post.content || '';
+    for (const rawPost of result.data) {
+      const processedPost = processLinkedInPost(rawPost);
       
       // Generate embedding for post text
-      const embedding = await generateEmbedding(postText);
-
-      // Calculate engagement rate
-      const totalEngagement = 
-        (post.likes || 0) + 
-        (post.comments || 0) + 
-        (post.shares || 0);
-      
-      const engagementRate = totalEngagement > 0 
-        ? ((totalEngagement / (post.impressions || 1)) * 100).toFixed(2)
-        : null;
+      const embedding = await generateEmbedding(processedPost.postText);
 
       const { data: savedPost, error: postError } = await supabase
         .from('linkedin_posts')
         .insert({
           user_id: user.id,
-          post_url: post.url || post.postUrl,
-          post_text: postText,
-          posted_at: post.postedAt || post.timestamp,
-          likes_count: post.likes || 0,
-          comments_count: post.comments || 0,
-          shares_count: post.shares || 0,
-          engagement_rate: engagementRate,
-          raw_data: post,
+          post_url: processedPost.postUrl,
+          post_text: processedPost.postText,
+          posted_at: processedPost.postedAt,
+          likes_count: processedPost.likesCount,
+          comments_count: processedPost.commentsCount,
+          shares_count: processedPost.sharesCount,
+          engagement_rate: processedPost.engagementRate,
+          raw_data: rawPost,
           embedding,
         })
         .select()
@@ -115,10 +97,12 @@ export async function POST(req: NextRequest) {
       postsCount: savedPosts.length,
     });
   } catch (error) {
-    console.error('LinkedIn posts fetch error:', error);
+    const apifyError = handleApifyError(error);
+    console.error('LinkedIn posts fetch error:', apifyError);
+    
     return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
+      { error: apifyError.message },
+      { status: apifyError.statusCode || 500 }
     );
   }
 }
