@@ -2,6 +2,7 @@ import { auth } from '@clerk/nextjs/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import OpenAI from 'openai';
+import { extractViralPatterns, saveViralPatterns } from '@/lib/viral/pattern-analyzer';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY!,
@@ -163,6 +164,36 @@ Provide analysis in the following JSON format:
         recommendations: voiceAnalysis.recommendations || [],
         analysis_summary: voiceAnalysis.analysis_summary,
       });
+
+    // Extract viral patterns from top posts
+    const topPosts = posts
+      .filter(p => p.engagement_rate && p.engagement_rate > 5)
+      .sort((a, b) => (b.engagement_rate || 0) - (a.engagement_rate || 0))
+      .slice(0, 10);
+
+    if (topPosts.length > 0) {
+      console.log('[analyze-posts] Extracting viral patterns from', topPosts.length, 'top posts');
+      
+      // Get post analysis for top posts
+      const { data: postAnalyses } = await supabase
+        .from('post_analysis')
+        .select('*')
+        .in('post_id', topPosts.map(p => p.id));
+
+      // Merge post data with analysis
+      const postsWithAnalysis = topPosts.map(post => {
+        const analysis = postAnalyses?.find(a => a.post_id === post.id);
+        return {
+          ...post,
+          post_analysis: analysis,
+        };
+      });
+
+      const viralPatterns = await extractViralPatterns(user.id, postsWithAnalysis);
+      await saveViralPatterns(user.id, viralPatterns);
+      
+      console.log('[analyze-posts] Saved', viralPatterns.length, 'viral patterns');
+    }
 
     // Update user onboarding status
     await supabase

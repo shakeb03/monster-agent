@@ -56,36 +56,23 @@ export function useChat({ chatId, initialMessages = [] }: UseChatOptions) {
           throw new Error('Failed to send message');
         }
 
-        const newChatId = response.headers.get('X-Chat-Id');
-        if (newChatId && newChatId !== chatId) {
-          router.push(`/chat/${newChatId}`);
+        // Parse JSON response from agent
+        const data = await response.json();
+
+        // Check if we got a new chatId
+        if (data.chatId && data.chatId !== chatId) {
+          router.push(`/chat/${data.chatId}`);
         }
 
-        // Handle streaming response
-        const reader = response.body?.getReader();
-        const decoder = new TextDecoder();
-        let assistantMessage = '';
-
-        if (reader) {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            const chunk = decoder.decode(value);
-            assistantMessage += chunk;
-
-            setMessages((prev) => {
-              const lastMessage = prev[prev.length - 1];
-              if (lastMessage?.role === 'assistant') {
-                return [
-                  ...prev.slice(0, -1),
-                  { role: 'assistant', content: assistantMessage },
-                ];
-              } else {
-                return [...prev, { role: 'assistant', content: assistantMessage }];
-              }
-            });
-          }
+        // Add assistant message to state
+        if (data.success && data.response) {
+          const assistantMessage: Message = {
+            role: 'assistant',
+            content: data.response,
+          };
+          setMessages((prev) => [...prev, assistantMessage]);
+        } else {
+          throw new Error('Invalid response from server');
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'An error occurred');

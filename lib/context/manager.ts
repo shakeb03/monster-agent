@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
-import { estimateTokensFromMessages, shouldSummarizeBasedOnTokens } from '@/lib/openai/tokens';
+import { createAdminClient } from '@/lib/supabase/admin';
+import { estimateTokensFromMessages, shouldSummarizeBasedOnTokens, estimateTokenCount } from '@/lib/openai/tokens';
 import { buildSystemPrompt } from '@/lib/openai/prompts';
 import type { ChatContext } from '@/types/openai';
 
@@ -159,5 +160,59 @@ export async function getMessagesForSummarization(
     role: msg.role as 'user' | 'assistant',
     content: msg.content,
   }));
+}
+
+// Viral-optimized context with aggressive compaction
+export async function getViralOptimizedContext(
+  userId: string,
+  chatId: string,
+  chatType: 'standard' | 'new_perspective'
+): Promise<ChatContext> {
+  const supabase = createAdminClient();
+
+  // 1. Voice summary (200 tokens max)
+  const { data: voiceAnalysis } = await supabase
+    .from('voice_analysis')
+    .select('overall_tone, writing_style, common_topics, analysis_summary')
+    .eq('user_id', userId)
+    .single();
+
+  // 2. Top 5 viral patterns only (250 tokens max)
+  const { data: topPatterns } = await supabase
+    .from('viral_patterns')
+    .select('pattern_type, pattern_description')
+    .eq('user_id', userId)
+    .order('success_rate', { ascending: false })
+    .limit(5);
+
+  // 3. Last 10 messages only (not full history)
+  const { data: recentMessages } = await supabase
+    .from('messages')
+    .select('role, content')
+    .eq('chat_id', chatId)
+    .order('created_at', { ascending: false })
+    .limit(10);
+
+  // Build compact system prompt
+  const systemPrompt = `You create viral LinkedIn content using proven patterns.
+
+Voice: ${voiceAnalysis?.overall_tone || 'professional'}
+Style: ${voiceAnalysis?.writing_style || 'clear and direct'}
+
+Top Patterns:
+${topPatterns?.map(p => `- ${p.pattern_description}`).join('\n') || 'Use engaging hooks and clear structure'}
+
+Always use these patterns. Be bold, specific, engaging.`;
+
+  const conversationHistory = recentMessages?.reverse() || [];
+
+  return {
+    systemPrompt,
+    conversationHistory: conversationHistory.map(msg => ({
+      role: msg.role as 'user' | 'assistant',
+      content: msg.content,
+    })),
+    totalTokens: estimateTokenCount(systemPrompt) + estimateTokenCount(JSON.stringify(recentMessages)),
+  };
 }
 

@@ -332,3 +332,97 @@ CREATE TRIGGER update_voice_analysis_updated_at BEFORE UPDATE ON voice_analysis
 CREATE TRIGGER update_chats_updated_at BEFORE UPDATE ON chats
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+-- Step 14: Create Viral Patterns Table
+CREATE TABLE viral_patterns (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    pattern_type TEXT NOT NULL CHECK (pattern_type IN ('hook', 'format', 'cta', 'topic', 'timing', 'emotion')),
+    pattern_description TEXT NOT NULL,
+    success_rate DECIMAL(5,2) DEFAULT 0,
+    example_post_ids TEXT[] DEFAULT '{}',
+    times_used INTEGER DEFAULT 0,
+    avg_engagement DECIMAL(5,2) DEFAULT 0,
+    last_used_at TIMESTAMPTZ,
+    metadata JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_viral_patterns_user_id ON viral_patterns(user_id);
+CREATE INDEX idx_viral_patterns_success ON viral_patterns(user_id, success_rate DESC);
+CREATE INDEX idx_viral_patterns_type ON viral_patterns(pattern_type);
+
+-- Step 15: Create Post Performance Table
+CREATE TABLE post_performance (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    post_content TEXT NOT NULL,
+    predicted_engagement DECIMAL(5,2),
+    actual_engagement DECIMAL(5,2),
+    patterns_used TEXT[],
+    posted_at TIMESTAMPTZ,
+    measured_at TIMESTAMPTZ,
+    outperformed BOOLEAN,
+    learnings TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_post_performance_user_id ON post_performance(user_id, created_at DESC);
+CREATE INDEX idx_post_performance_outperformed ON post_performance(user_id, outperformed);
+
+-- Step 16: Enable RLS for Viral Tables
+ALTER TABLE viral_patterns ENABLE ROW LEVEL SECURITY;
+ALTER TABLE post_performance ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies for viral_patterns
+CREATE POLICY "Users can read own viral patterns" ON viral_patterns
+    FOR SELECT
+    USING (user_id IN (SELECT id FROM users WHERE clerk_user_id = auth.jwt() ->> 'sub'));
+
+CREATE POLICY "Users can insert own viral patterns" ON viral_patterns
+    FOR INSERT
+    WITH CHECK (user_id IN (SELECT id FROM users WHERE clerk_user_id = auth.jwt() ->> 'sub'));
+
+CREATE POLICY "Users can update own viral patterns" ON viral_patterns
+    FOR UPDATE
+    USING (user_id IN (SELECT id FROM users WHERE clerk_user_id = auth.jwt() ->> 'sub'));
+
+-- RLS Policies for post_performance
+CREATE POLICY "Users can read own post performance" ON post_performance
+    FOR SELECT
+    USING (user_id IN (SELECT id FROM users WHERE clerk_user_id = auth.jwt() ->> 'sub'));
+
+CREATE POLICY "Users can insert own post performance" ON post_performance
+    FOR INSERT
+    WITH CHECK (user_id IN (SELECT id FROM users WHERE clerk_user_id = auth.jwt() ->> 'sub'));
+
+-- Step 17: Add Triggers for Viral Tables
+CREATE TRIGGER update_viral_patterns_updated_at BEFORE UPDATE ON viral_patterns
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Step 18: Create Agent Logs Table
+CREATE TABLE agent_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    request TEXT NOT NULL,
+    tools_used TEXT[],
+    context_tokens INTEGER,
+    response_time_ms INTEGER,
+    success BOOLEAN,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_agent_logs_user_id ON agent_logs(user_id, created_at DESC);
+
+-- Step 19: Enable RLS for Agent Logs
+ALTER TABLE agent_logs ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies for agent_logs
+CREATE POLICY "Users can read own agent logs" ON agent_logs
+    FOR SELECT
+    USING (user_id IN (SELECT id FROM users WHERE clerk_user_id = auth.jwt() ->> 'sub'));
+
+CREATE POLICY "Users can insert own agent logs" ON agent_logs
+    FOR INSERT
+    WITH CHECK (user_id IN (SELECT id FROM users WHERE clerk_user_id = auth.jwt() ->> 'sub'));
+

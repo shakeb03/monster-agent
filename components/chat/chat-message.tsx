@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils';
 import { Avatar } from '@/components/ui/avatar';
 import { User, Bot } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import type { Components } from 'react-markdown';
 
 interface ChatMessageProps {
   role: 'user' | 'assistant';
@@ -40,9 +41,52 @@ export default function ChatMessage({ role, content, timestamp }: ChatMessagePro
         >
           <div className={cn(
             'prose prose-sm max-w-none',
-            isUser ? 'prose-invert' : 'dark:prose-invert'
+            isUser ? 'prose-invert' : 'dark:prose-invert',
+            // Better markdown styling
+            'prose-headings:mt-4 prose-headings:mb-2',
+            'prose-p:my-2',
+            'prose-pre:bg-black prose-pre:text-white prose-pre:p-4 prose-pre:rounded-lg',
+            'prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded',
+            'prose-strong:font-bold',
+            'prose-ul:my-2 prose-li:my-1'
           )}>
-            <ReactMarkdown>{content}</ReactMarkdown>
+            <ReactMarkdown
+              components={{
+                // Custom rendering for better formatting
+                h3: ({ children }) => (
+                  <h3 className="text-base font-bold mt-4 mb-2 text-foreground">
+                    {children}
+                  </h3>
+                ),
+                p: ({ children }) => (
+                  <p className="my-2 leading-relaxed">{children}</p>
+                ),
+                strong: ({ children }) => (
+                  <strong className="font-semibold text-foreground">{children}</strong>
+                ),
+                ul: ({ children }) => (
+                  <ul className="my-2 space-y-1 list-disc list-inside">{children}</ul>
+                ),
+                ol: ({ children }) => (
+                  <ol className="my-2 space-y-1 list-decimal list-inside">{children}</ol>
+                ),
+                li: ({ children }) => (
+                  <li className="ml-2">{children}</li>
+                ),
+                code: ({ className, children }) => {
+                  const isInline = !className;
+                  return isInline ? (
+                    <code className="bg-muted px-1.5 py-0.5 rounded text-sm font-mono">
+                      {children}
+                    </code>
+                  ) : (
+                    <code className={className}>{children}</code>
+                  );
+                },
+              }}
+            >
+              {content}
+            </ReactMarkdown>
           </div>
         </div>
         {timestamp && (
