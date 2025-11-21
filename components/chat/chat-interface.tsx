@@ -13,28 +13,33 @@ interface ChatInterfaceProps {
 }
 
 export default function ChatInterface({ chatId, userId }: ChatInterfaceProps) {
-  const [messages, setMessages] = useState<any[]>([]);
-  const { sendMessage, isLoading, error } = useChat({
-    chatId,
-    initialMessages: messages,
-  });
+  const [initialMessages, setInitialMessages] = useState<any[]>([]);
+  const [isLoadingMessages, setIsLoadingMessages] = useState(true);
 
   useEffect(() => {
     // Fetch initial messages
     async function fetchMessages() {
       try {
+        setIsLoadingMessages(true);
         const response = await fetch(`/api/messages?chatId=${chatId}`);
         if (response.ok) {
           const data = await response.json();
-          setMessages(data.messages || []);
+          setInitialMessages(data.messages || []);
         }
       } catch (err) {
         console.error('Failed to fetch messages:', err);
+      } finally {
+        setIsLoadingMessages(false);
       }
     }
 
     fetchMessages();
   }, [chatId]);
+
+  const { messages, sendMessage, isLoading, error } = useChat({
+    chatId,
+    initialMessages,
+  });
 
   return (
     <div className="flex h-screen w-full overflow-hidden">

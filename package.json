@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^2.0.71",
     "@clerk/nextjs": "^6.35.3",
     "@clerk/themes": "^2.4.38",
     "@radix-ui/react-avatar": "^1.1.11",

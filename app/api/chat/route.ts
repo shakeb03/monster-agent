@@ -1,13 +1,9 @@
 import { auth } from '@clerk/nextjs/server';
 import { NextRequest, NextResponse } from 'next/server';
-import { OpenAIStream, StreamingTextResponse } from 'ai';
-import OpenAI from 'openai';
+import { streamText } from 'ai';
+import { openai } from '@ai-sdk/openai';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getContextForChat, shouldSummarizeContext } from '@/lib/context/manager';
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY!,
-});
 
 export const runtime = 'edge';
 
@@ -136,17 +132,13 @@ export async function POST(req: NextRequest) {
       }).catch(console.error);
     }
 
-    // Stream response from OpenAI
-    const response = await openai.chat.completions.create({
-      model: 'gpt-4',
+    // Stream response using AI SDK
+    const result = streamText({
+      model: openai('gpt-4'),
       messages,
-      stream: true,
       temperature: 0.7,
-      max_tokens: 2000,
-    });
-
-    const stream = OpenAIStream(response, {
-      async onCompletion(completion) {
+      maxTokens: 2000,
+      async onFinish({ text }) {
         // Save assistant message
         await supabase
           .from('messages')
@@ -154,12 +146,12 @@ export async function POST(req: NextRequest) {
             chat_id: currentChatId,
             user_id: user.id,
             role: 'assistant',
-            content: completion,
-            token_count: Math.ceil(completion.length / 4),
+            content: text,
+            token_count: Math.ceil(text.length / 4),
           });
 
         // Update total tokens
-        const totalTokens = Math.ceil((message.length + completion.length) / 4);
+        const totalTokens = Math.ceil((message.length + text.length) / 4);
         await supabase
           .from('chats')
           .update({
@@ -169,7 +161,7 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    return new StreamingTextResponse(stream, {
+    return result.toTextStreamResponse({
       headers: {
         'X-Chat-Id': currentChatId,
       },

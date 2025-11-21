@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
 interface Message {
@@ -18,6 +18,18 @@ export function useChat({ chatId, initialMessages = [] }: UseChatOptions) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
+
+  // Sync messages when chatId changes or initialMessages are loaded
+  useEffect(() => {
+    setMessages(initialMessages);
+  }, [chatId]); // Reset messages when chat changes
+
+  // Update messages when initial messages are first loaded
+  useEffect(() => {
+    if (initialMessages.length > 0 && messages.length === 0) {
+      setMessages(initialMessages);
+    }
+  }, [initialMessages.length]);
 
   const sendMessage = useCallback(
     async (content: string) => {
