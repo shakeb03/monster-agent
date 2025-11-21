@@ -113,11 +113,33 @@ const AGENT_TOOLS = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'get_previous_response',
+      description: 'Get your previous response from conversation history. Use this when user refers to "variation 3", "the second one", "that post", etc. IMPORTANT: Conversation history is already included in messages, so you can also just look at it directly.',
+      parameters: {
+        type: 'object',
+        properties: {
+          chat_id: {
+            type: 'string',
+            description: 'The chat ID',
+          },
+          query: {
+            type: 'string',
+            description: 'What to look for (e.g., "variation 3", "second post")',
+          },
+        },
+        required: ['chat_id', 'query'],
+      },
+    },
+  },
 ];
 
 export async function runAgent(
   userId: string,
-  userMessage: string
+  userMessage: string,
+  chatId: string // Now required!
 ): Promise<AgentResponse> {
   const supabase = createAdminClient();
 
@@ -132,15 +154,44 @@ export async function runAgent(
     throw new Error('User not found');
   }
 
+  // ✅ CRITICAL: Load conversation history
+  const { data: previousMessages } = await supabase
+    .from('messages')
+    .select('role, content')
+    .eq('chat_id', chatId)
+    .order('created_at', { ascending: true })
+    .limit(20); // Last 20 messages
+
+  // Build messages array with history
   const messages: any[] = [
     {
       role: 'system',
-      content: `You are an intelligent LinkedIn content agent. When a user asks you to create content:
+      content: `You are an intelligent LinkedIn content agent with conversation memory.
 
-1. ANALYZE the request to understand what they want
-2. GATHER necessary context using tools (profile, patterns, examples)
-3. GENERATE content using gathered context
-4. RESPOND with ready-to-use content
+## HANDLING USER REFERENCES
+When user says:
+- "write variation 3" → Extract variation 3 from YOUR last response in the conversation history
+- "the second one" → Extract the second item from YOUR last response
+- "that post" → Reference the most recent post you generated
+- "improve it" → Reference the most recent content
+- "make it shorter" → Reference the last thing you showed and shorten it
+
+## CRITICAL RULES
+1. When user refers to "variation 3", "the second one", "that post", etc., look at YOUR PREVIOUS RESPONSES in the conversation history
+2. Maintain continuity - remember what you generated before
+3. If user asks to "write variation 3", output EXACTLY what you showed as variation 3 in your last response
+4. Never generate new content when user is referencing something you already created
+5. You have FULL conversation history - use it!
+
+## PROCESS
+1. Check if user is referencing previous content (look at conversation history)
+2. If yes: Extract the exact content they're referencing from YOUR previous messages
+3. If no: Gather context using tools and generate new content
+4. Respond with specific content or modification
+
+## TOOLS
+Use tools to fetch NEW data (user profile, patterns, etc.)
+Do NOT use tools for content you already generated
 
 The user has already completed onboarding - you have access to their:
 - Voice analysis and writing style
@@ -150,16 +201,14 @@ The user has already completed onboarding - you have access to their:
 
 NEVER ask the user for information you can fetch yourself. Be proactive and intelligent.
 
-Example:
-User: "write me a post"
-You: [Use get_user_profile → get_viral_patterns → generate_viral_content] → Return 3 post variations
-
-Example 2:
-User: "write about leadership"
-You: [Use get_user_profile → get_top_performing_posts with topic="leadership" → get_viral_patterns → generate_viral_content] → Return tailored leadership post
-
-Always gather context BEFORE generating. Never respond with questions - respond with content.`,
+Always gather context BEFORE generating NEW content. Never respond with questions - respond with content.`,
     },
+    // ✅ Add conversation history
+    ...(previousMessages || []).map(msg => ({
+      role: msg.role,
+      content: msg.content,
+    })),
+    // Add current message
     {
       role: 'user',
       content: userMessage,
@@ -238,6 +287,13 @@ Always gather context BEFORE generating. Never respond with questions - respond 
             toolArgs.topic || 'general',
             toolArgs.tone,
             fullContext
+          );
+          break;
+
+        case 'get_previous_response':
+          toolResult = await getPreviousResponse(
+            toolArgs.chat_id,
+            toolArgs.query
           );
           break;
 
@@ -419,10 +475,30 @@ FORMAT:
   return response.choices[0].message.content || '';
 }
 
+async function getPreviousResponse(chatId: string, query: string) {
+  const supabase = createAdminClient();
+
+  const { data: lastAssistantMessage } = await supabase
+    .from('messages')
+    .select('content')
+    .eq('chat_id', chatId)
+    .eq('role', 'assistant')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .single();
+
+  return {
+    previousResponse: lastAssistantMessage?.content || 'No previous response found',
+    query,
+    note: 'Conversation history is already included in the messages array, so you can also reference it directly.',
+  };
+}
+
 // Streaming version of agent for real-time responses
 export async function runAgentStreaming(
   userId: string,
   userMessage: string,
+  chatId: string,
   onChunk: (text: string) => void
 ): Promise<void> {
   const supabase = createAdminClient();
@@ -438,12 +514,24 @@ export async function runAgentStreaming(
     throw new Error('User not found');
   }
 
+  // Load conversation history
+  const { data: previousMessages } = await supabase
+    .from('messages')
+    .select('role, content')
+    .eq('chat_id', chatId)
+    .order('created_at', { ascending: true })
+    .limit(20);
+
   // First, gather context using agent tools (non-streaming)
   const messages: any[] = [
     {
       role: 'system',
-      content: `You are an intelligent LinkedIn content agent. Gather necessary context using tools, then generate content.`,
+      content: `You are an intelligent LinkedIn content agent with conversation memory. Gather necessary context using tools, then generate content. Remember previous responses in the conversation.`,
     },
+    ...(previousMessages || []).map(msg => ({
+      role: msg.role,
+      content: msg.content,
+    })),
     {
       role: 'user',
       content: userMessage,

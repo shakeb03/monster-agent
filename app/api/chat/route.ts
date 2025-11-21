@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
       currentChatId = newChat?.id;
     }
 
-    // Save user message
+    // Save user message BEFORE running agent (so it's in history)
     await supabase.from('messages').insert({
       chat_id: currentChatId,
       user_id: user.id,
@@ -63,9 +63,9 @@ export async function POST(req: NextRequest) {
       token_count: Math.ceil(message.length / 4),
     });
 
-    // Run agent (this handles all tool calls automatically)
+    // ✅ Run agent WITH chat ID for conversation history
     const startTime = Date.now();
-    const agentResponse = await runAgent(user.id, message);
+    const agentResponse = await runAgent(user.id, message, currentChatId);
     const responseTime = Date.now() - startTime;
 
     // Log agent action for monitoring
