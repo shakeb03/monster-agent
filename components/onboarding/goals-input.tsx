@@ -59,8 +59,7 @@ export default function GoalsInput({
           {GOAL_OPTIONS.map((goal) => (
             <div
               key={goal.id}
-              className="flex items-center space-x-3 p-3 rounded-lg border border-border hover:bg-accent/50 transition-colors cursor-pointer"
-              onClick={() => toggleGoal(goal.id)}
+              className="flex items-center space-x-3 p-3 rounded-lg border border-border hover:bg-accent/50 transition-colors"
             >
               <Checkbox
                 id={goal.id}
@@ -70,6 +69,7 @@ export default function GoalsInput({
               <label
                 htmlFor={goal.id}
                 className="flex-1 text-sm font-medium cursor-pointer"
+                onClick={() => toggleGoal(goal.id)}
               >
                 {goal.label}
               </label>

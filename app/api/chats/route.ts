@@ -1,16 +1,17 @@
-import { auth } from '@clerk/nextjs';
+import { auth } from '@clerk/nextjs/server';
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 
 export async function GET() {
   try {
-    const { userId } = auth();
+    const { userId } = await auth();
 
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const supabase = await createClient();
+    // Use admin client to bypass RLS
+    const supabase = createAdminClient();
 
     const { data: user } = await supabase
       .from('users')
@@ -49,7 +50,7 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
-    const { userId } = auth();
+    const { userId } = await auth();
 
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -58,7 +59,8 @@ export async function POST(req: NextRequest) {
     const { chatType = 'standard' }: { chatType?: 'standard' | 'new_perspective' } =
       await req.json();
 
-    const supabase = await createClient();
+    // Use admin client to bypass RLS
+    const supabase = createAdminClient();
 
     const { data: user } = await supabase
       .from('users')

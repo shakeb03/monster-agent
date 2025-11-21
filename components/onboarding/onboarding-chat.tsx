@@ -7,7 +7,7 @@ import { Loader2 } from 'lucide-react';
 import LinkedInUrlInput from './linkedin-url-input';
 import GoalsInput from './goals-input';
 import ProgressIndicator from './progress-indicator';
-import { useToast } from '@/components/ui/use-toast';
+import { useToast } from '@/hooks/use-toast';
 
 type OnboardingStep = 'linkedin_url' | 'fetching_data' | 'goals' | 'analyzing' | 'completed';
 
@@ -16,11 +16,15 @@ interface OnboardingChatProps {
 }
 
 export default function OnboardingChat({ user }: OnboardingChatProps) {
+  console.log('[OnboardingChat] Rendering with user:', user);
+  
   const [step, setStep] = useState<OnboardingStep>('linkedin_url');
   const [linkedInUrl, setLinkedInUrl] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
+  
+  console.log('[OnboardingChat] Current step:', step);
 
   const progressSteps = [
     {
@@ -90,7 +94,16 @@ export default function OnboardingChat({ user }: OnboardingChatProps) {
     setStep('analyzing');
 
     try {
-      // Save goals
+      // Analyze posts FIRST
+      const analysisResponse = await fetch('/api/onboarding/analyze-posts', {
+        method: 'POST',
+      });
+
+      if (!analysisResponse.ok) {
+        throw new Error('Failed to analyze posts');
+      }
+
+      // THEN save goals (which marks onboarding as completed)
       const goalsResponse = await fetch('/api/onboarding/goals', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -99,15 +112,6 @@ export default function OnboardingChat({ user }: OnboardingChatProps) {
 
       if (!goalsResponse.ok) {
         throw new Error('Failed to save goals');
-      }
-
-      // Analyze posts
-      const analysisResponse = await fetch('/api/onboarding/analyze-posts', {
-        method: 'POST',
-      });
-
-      if (!analysisResponse.ok) {
-        throw new Error('Failed to analyze posts');
       }
 
       toast({

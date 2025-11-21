@@ -37,23 +37,28 @@ export default function ChatInterface({ chatId, userId }: ChatInterfaceProps) {
   }, [chatId]);
 
   return (
-    <div className="flex h-screen w-full">
+    <div className="flex h-screen w-full overflow-hidden">
       {/* Left Sidebar - Chat History */}
       <ChatSidebar userId={userId} currentChatId={chatId} />
 
-      {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col">
+      {/* Main Chat Area - Unified Container */}
+      <div className="flex-1 flex flex-col min-w-0 relative bg-background">
+        {/* Messages with infinite scroll */}
         <ChatMessages messages={messages} isLoading={isLoading} />
-        <ChatInput
-          onSend={sendMessage}
-          disabled={isLoading}
-          placeholder="Type your message..."
-        />
-        {error && (
-          <div className="px-4 py-2 bg-destructive/10 text-destructive text-sm">
-            {error}
-          </div>
-        )}
+        
+        {/* Sticky Input at Bottom - No Border */}
+        <div className="sticky bottom-0 left-0 right-0 bg-gradient-to-t from-background via-background to-transparent pt-8">
+          <ChatInput
+            onSend={sendMessage}
+            disabled={isLoading}
+            placeholder="Type your message..."
+          />
+          {error && (
+            <div className="px-4 pb-2 text-destructive text-sm">
+              {error}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Right Panel - Analysis */}

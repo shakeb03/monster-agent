@@ -24,8 +24,11 @@ export class ApifyClient {
     timeout = 300,
   }: ApifyRunOptions): Promise<ApifyRunResult> {
     try {
+      // Apify API uses ~ instead of / in actor IDs for URLs
+      const actorIdForUrl = actorId.replace('/', '~');
+      
       const response = await fetch(
-        `${this.baseUrl}/acts/${actorId}/run-sync-get-dataset-items?token=${this.apiKey}&timeout=${timeout}`,
+        `${this.baseUrl}/acts/${actorIdForUrl}/run-sync-get-dataset-items?token=${this.apiKey}&timeout=${timeout}`,
         {
           method: 'POST',
           headers: {
@@ -61,7 +64,8 @@ export class ApifyClient {
     return this.runActorSync({
       actorId: 'apimaestro/linkedin-profile-detail',
       input: {
-        profileUrls: [profileUrl],
+        includeEmail: false,
+        username: profileUrl,
       },
       timeout: 120,
     });
@@ -74,8 +78,10 @@ export class ApifyClient {
     return this.runActorSync({
       actorId: 'supreme_coder/linkedin-post',
       input: {
-        profileUrl,
-        maxPosts,
+        deepScrape: true,
+        limitPerSource: maxPosts,
+        rawData: false,
+        urls: [profileUrl],
       },
       timeout: 300,
     });

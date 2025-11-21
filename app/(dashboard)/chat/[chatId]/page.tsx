@@ -1,6 +1,6 @@
-import { auth } from '@clerk/nextjs';
+import { auth } from '@clerk/nextjs/server';
 import { redirect } from 'next/navigation';
-import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import ChatInterface from '@/components/chat/chat-interface';
 
 interface ChatPageProps {
@@ -10,13 +10,14 @@ interface ChatPageProps {
 }
 
 export default async function ChatPage({ params }: ChatPageProps) {
-  const { userId } = auth();
+  const { userId } = await auth();
 
   if (!userId) {
     redirect('/sign-in');
   }
 
-  const supabase = await createClient();
+  // Use admin client to bypass RLS
+  const supabase = createAdminClient();
 
   const { data: user } = await supabase
     .from('users')

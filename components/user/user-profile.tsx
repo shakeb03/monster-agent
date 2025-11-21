@@ -1,7 +1,6 @@
 'use client';
 
-import { UserButton } from '@clerk/nextjs';
-import { useUser } from '@/components/providers/user-provider';
+import { UserButton, useUser } from '@clerk/nextjs';
 
 export function UserProfile() {
   const { user } = useUser();
@@ -11,12 +10,12 @@ export function UserProfile() {
       <UserButton afterSignOutUrl="/sign-in" />
       {user && (
         <div className="flex flex-col">
-          <span className="text-sm font-medium">{user.email}</span>
-          {user.linkedin_profile_url && (
-            <span className="text-xs text-muted-foreground">
-              Profile connected
-            </span>
-          )}
+          <span className="text-sm font-medium">
+            {user.primaryEmailAddress?.emailAddress || 'User'}
+          </span>
+          <span className="text-xs text-muted-foreground">
+            Signed in
+          </span>
         </div>
       )}
     </div>

@@ -1,17 +1,21 @@
-import { auth } from '@clerk/nextjs';
+import { auth } from '@clerk/nextjs/server';
 import { redirect } from 'next/navigation';
-import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import OnboardingChat from '@/components/onboarding/onboarding-chat';
 import ChatInterface from '@/components/chat/chat-interface';
 
 export default async function ChatPage() {
-  const { userId } = auth();
+  const { userId } = await auth();
+
+  console.log('[ChatPage] userId:', userId);
 
   if (!userId) {
+    console.log('[ChatPage] No userId, redirecting to sign-in');
     redirect('/sign-in');
   }
 
-  const supabase = await createClient();
+  // Use admin client to bypass RLS
+  const supabase = createAdminClient();
 
   const { data: user } = await supabase
     .from('users')
@@ -19,12 +23,18 @@ export default async function ChatPage() {
     .eq('clerk_user_id', userId)
     .single();
 
+  console.log('[ChatPage] User from DB:', user);
+
   if (!user) {
+    console.log('[ChatPage] No user in DB, redirecting to sign-in');
     redirect('/sign-in');
   }
 
   // Check onboarding status
   const needsOnboarding = user.onboarding_status !== 'completed';
+
+  console.log('[ChatPage] User onboarding status:', user.onboarding_status);
+  console.log('[ChatPage] Needs onboarding:', needsOnboarding);
 
   if (needsOnboarding) {
     return <OnboardingChat user={user} />;

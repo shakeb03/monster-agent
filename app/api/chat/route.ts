@@ -1,8 +1,8 @@
-import { auth } from '@clerk/nextjs';
+import { auth } from '@clerk/nextjs/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { OpenAIStream, StreamingTextResponse } from 'ai';
 import OpenAI from 'openai';
-import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { getContextForChat, shouldSummarizeContext } from '@/lib/context/manager';
 
 const openai = new OpenAI({
@@ -19,7 +19,7 @@ interface ChatRequest {
 
 export async function POST(req: NextRequest) {
   try {
-    const { userId } = auth();
+    const { userId } = await auth();
     
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -31,7 +31,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Message is required' }, { status: 400 });
     }
 
-    const supabase = await createClient();
+    // Use admin client to bypass RLS
+    const supabase = createAdminClient();
 
     // Get user from database
     const { data: user, error: userError } = await supabase

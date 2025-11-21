@@ -34,9 +34,9 @@ export default function AnalysisPanel({ userId }: AnalysisPanelProps) {
   }
 
   return (
-    <div className="w-80 border-l border-border flex flex-col h-full bg-card">
+    <div className="w-80 border-l border-border flex flex-col h-screen bg-card overflow-hidden">
       {/* Header */}
-      <div className="p-4 border-b border-border flex items-center justify-between">
+      <div className="p-4 border-b border-border flex items-center justify-between flex-shrink-0">
         <h2 className="text-lg font-semibold">Analysis</h2>
         <Button
           variant="ghost"
@@ -63,25 +63,27 @@ export default function AnalysisPanel({ userId }: AnalysisPanelProps) {
           </p>
         </div>
       ) : (
-        <Tabs defaultValue="voice" className="flex-1 flex flex-col">
-          <TabsList className="w-full grid grid-cols-3 mx-4 mt-2">
+        <Tabs defaultValue="voice" className="flex-1 flex flex-col overflow-hidden">
+          <TabsList className="grid grid-cols-3 mx-4 my-3 flex-shrink-0">
             <TabsTrigger value="voice">Voice</TabsTrigger>
             <TabsTrigger value="posts">Top Posts</TabsTrigger>
             <TabsTrigger value="metrics">Metrics</TabsTrigger>
           </TabsList>
 
-          <ScrollArea className="flex-1 p-4">
-            <TabsContent value="voice" className="mt-0">
-              <VoiceAnalysis data={data.voiceAnalysis} />
-            </TabsContent>
+          <ScrollArea className="flex-1">
+            <div className="px-4 pb-4">
+              <TabsContent value="voice" className="mt-0 space-y-4">
+                <VoiceAnalysis data={data.voiceAnalysis} />
+              </TabsContent>
 
-            <TabsContent value="posts" className="mt-0">
-              <TopPosts posts={data.topPosts} />
-            </TabsContent>
+              <TabsContent value="posts" className="mt-0 space-y-4">
+                <TopPosts posts={data.topPosts} />
+              </TabsContent>
 
-            <TabsContent value="metrics" className="mt-0">
-              <MetricsDisplay stats={data.postingStats} />
-            </TabsContent>
+              <TabsContent value="metrics" className="mt-0 space-y-4">
+                <MetricsDisplay stats={data.postingStats} />
+              </TabsContent>
+            </div>
           </ScrollArea>
         </Tabs>
       )}

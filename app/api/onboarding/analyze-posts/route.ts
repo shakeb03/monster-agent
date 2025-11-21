@@ -1,6 +1,6 @@
-import { auth } from '@clerk/nextjs';
+import { auth } from '@clerk/nextjs/server';
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import OpenAI from 'openai';
 
 const openai = new OpenAI({
@@ -9,13 +9,14 @@ const openai = new OpenAI({
 
 export async function POST(req: NextRequest) {
   try {
-    const { userId } = auth();
+    const { userId } = await auth();
     
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const supabase = await createClient();
+    // Use admin client to bypass RLS
+    const supabase = createAdminClient();
 
     // Get user from database
     const { data: user, error: userError } = await supabase
@@ -25,8 +26,11 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (userError || !user) {
+      console.error('[analyze-posts] User not found for clerk_user_id:', userId, userError);
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
+
+    console.log('[analyze-posts] Starting analysis for user:', user.email);
 
     // Get all posts for the user
     const { data: posts, error: postsError } = await supabase

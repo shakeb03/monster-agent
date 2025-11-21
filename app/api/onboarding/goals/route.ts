@@ -1,10 +1,10 @@
-import { auth } from '@clerk/nextjs';
+import { auth } from '@clerk/nextjs/server';
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 
 export async function POST(req: NextRequest) {
   try {
-    const { userId } = auth();
+    const { userId } = await auth();
     
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -16,7 +16,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Goals must be an array' }, { status: 400 });
     }
 
-    const supabase = await createClient();
+    // Use admin client to bypass RLS
+    const supabase = createAdminClient();
 
     // Get user from database
     const { data: user, error: userError } = await supabase
@@ -26,8 +27,11 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (userError || !user) {
+      console.error('[goals] User not found for clerk_user_id:', userId, userError);
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
+
+    console.log('[goals] Saving goals for user:', user.email);
 
     // Update user goals and complete onboarding
     const { error: updateError } = await supabase
@@ -39,11 +43,14 @@ export async function POST(req: NextRequest) {
       .eq('id', user.id);
 
     if (updateError) {
+      console.error('[goals] Error updating user:', updateError);
       return NextResponse.json(
         { error: 'Failed to save goals' },
         { status: 500 }
       );
     }
+
+    console.log('[goals] Success! Onboarding completed.');
 
     return NextResponse.json({
       success: true,

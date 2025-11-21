@@ -15,34 +15,45 @@ export default function ChatMessage({ role, content, timestamp }: ChatMessagePro
   const isUser = role === 'user';
 
   return (
-    <div className={cn('flex gap-3', isUser && 'flex-row-reverse')}>
+    <div className={cn('flex gap-3 items-start', isUser && 'flex-row-reverse')}>
       <Avatar
         className={cn(
-          'h-8 w-8 flex items-center justify-center',
+          'h-8 w-8 flex items-center justify-center flex-shrink-0 mt-1',
           isUser ? 'bg-primary' : 'bg-secondary'
         )}
       >
         {isUser ? (
-          <User className="h-5 w-5" />
+          <User className="h-4 w-4" />
         ) : (
-          <Bot className="h-5 w-5" />
+          <Bot className="h-4 w-4" />
         )}
       </Avatar>
 
-      <div
-        className={cn(
-          'flex-1 px-4 py-3 rounded-lg',
-          isUser
-            ? 'bg-primary text-primary-foreground'
-            : 'bg-secondary text-secondary-foreground'
-        )}
-      >
-        <div className="prose prose-sm dark:prose-invert max-w-none">
-          <ReactMarkdown>{content}</ReactMarkdown>
+      <div className={cn('flex-1 space-y-1', isUser && 'flex flex-col items-end')}>
+        <div
+          className={cn(
+            'inline-block px-4 py-2.5 rounded-2xl max-w-[85%]',
+            isUser
+              ? 'bg-primary text-primary-foreground rounded-tr-sm'
+              : 'bg-muted text-foreground rounded-tl-sm'
+          )}
+        >
+          <div className={cn(
+            'prose prose-sm max-w-none',
+            isUser ? 'prose-invert' : 'dark:prose-invert'
+          )}>
+            <ReactMarkdown>{content}</ReactMarkdown>
+          </div>
         </div>
         {timestamp && (
-          <p className="text-xs opacity-50 mt-2">
-            {new Date(timestamp).toLocaleTimeString()}
+          <p className={cn(
+            'text-xs text-muted-foreground px-1',
+            isUser && 'text-right'
+          )}>
+            {new Date(timestamp).toLocaleTimeString([], { 
+              hour: '2-digit', 
+              minute: '2-digit' 
+            })}
           </p>
         )}
       </div>
