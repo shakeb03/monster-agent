@@ -1,19 +1,36 @@
 import { createClient } from '@/lib/supabase/server';
+import { estimateTokensFromMessages, shouldSummarizeBasedOnTokens } from '@/lib/openai/tokens';
+import { buildSystemPrompt } from '@/lib/openai/prompts';
+import type { ChatContext } from '@/types/openai';
 
-interface ContextResult {
-  systemPrompt: string;
-  conversationHistory: Array<{
-    role: 'user' | 'assistant' | 'system';
-    content: string;
-  }>;
+interface ContextOptions {
+  maxMessages?: number;
+  includeSystemPrompt?: boolean;
 }
 
 export async function getContextForChat(
   userId: string,
   chatId: string,
-  chatType: 'standard' | 'new_perspective'
-): Promise<ContextResult> {
+  chatType: 'standard' | 'new_perspective',
+  options: ContextOptions = {}
+): Promise<ChatContext> {
+  const { maxMessages = 50, includeSystemPrompt = true } = options;
+
   const supabase = await createClient();
+
+  // Get user profile
+  const { data: user } = await supabase
+    .from('users')
+    .select('*')
+    .eq('id', userId)
+    .single();
+
+  // Get LinkedIn profile
+  const { data: profile } = await supabase
+    .from('linkedin_profiles')
+    .select('*')
+    .eq('user_id', userId)
+    .single();
 
   // Get voice analysis
   const { data: voiceAnalysis } = await supabase
@@ -22,70 +39,89 @@ export async function getContextForChat(
     .eq('user_id', userId)
     .single();
 
-  // Get user goals
-  const { data: user } = await supabase
-    .from('users')
-    .select('goals')
-    .eq('id', userId)
-    .single();
+  // Build system prompt
+  const systemPrompt = buildSystemPrompt(
+    {
+      fullName: profile?.full_name || null,
+      headline: profile?.headline || null,
+      about: profile?.about || null,
+      goals: user?.goals || [],
+    },
+    {
+      overallTone: voiceAnalysis?.overall_tone || null,
+      writingStyle: voiceAnalysis?.writing_style || null,
+      commonTopics: voiceAnalysis?.common_topics || [],
+      analysisSummary: voiceAnalysis?.analysis_summary || null,
+    },
+    chatType
+  );
 
-  // Get long context if exists
-  const { data: longContext } = await supabase
-    .from('long_context')
-    .select('*')
-    .eq('user_id', userId)
-    .single();
+  let conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [];
 
-  // Get recent messages (last 20)
+  if (chatType === 'standard') {
+    // Get long context summary for standard chats
+    const { data: longContext } = await supabase
+      .from('long_context')
+      .select('*')
+      .eq('user_id', userId)
+      .single();
+
+    if (longContext) {
+      // Add long context as a system message in history
+      conversationHistory.push({
+        role: 'assistant',
+        content: `[Context Summary]: ${longContext.context_text}`,
+      });
+    }
+
+    // Get recent context summaries for this chat
+    const { data: summaries } = await supabase
+      .from('context_summaries')
+      .select('*')
+      .eq('chat_id', chatId)
+      .order('created_at', { ascending: false })
+      .limit(3);
+
+    if (summaries && summaries.length > 0) {
+      for (const summary of summaries.reverse()) {
+        conversationHistory.push({
+          role: 'assistant',
+          content: `[Summary]: ${summary.summary_text}`,
+        });
+      }
+    }
+  }
+
+  // Get recent messages
   const { data: messages } = await supabase
     .from('messages')
     .select('*')
     .eq('chat_id', chatId)
     .order('created_at', { ascending: false })
-    .limit(20);
+    .limit(maxMessages);
 
-  // Build system prompt
-  let systemPrompt = `You are a LinkedIn content creation assistant. `;
-
-  if (chatType === 'new_perspective') {
-    systemPrompt += `Your role is to help create content from a COMPLETELY NEW perspective - different tone, style, and approach than the user's typical voice. Be creative and bold with suggestions that break from their usual patterns.\n\n`;
-  } else {
-    systemPrompt += `Your role is to help create LinkedIn content that matches the user's authentic voice and style.\n\n`;
-  }
-
-  if (voiceAnalysis) {
-    systemPrompt += `USER'S VOICE PROFILE:\n`;
-    systemPrompt += `- Tone: ${voiceAnalysis.overall_tone}\n`;
-    systemPrompt += `- Writing Style: ${voiceAnalysis.writing_style}\n`;
-    systemPrompt += `- Common Topics: ${voiceAnalysis.common_topics.join(', ')}\n`;
-    systemPrompt += `- Strengths: ${voiceAnalysis.strengths.join(', ')}\n`;
+  if (messages) {
+    // Reverse to get chronological order
+    const recentMessages = messages.reverse();
     
-    if (chatType === 'standard') {
-      systemPrompt += `\nMaintain this voice while helping them create content.\n`;
-    } else {
-      systemPrompt += `\nNote: For this session, deliberately suggest alternatives to their typical style.\n`;
-    }
+    conversationHistory.push(
+      ...recentMessages.map((msg) => ({
+        role: msg.role as 'user' | 'assistant',
+        content: msg.content,
+      }))
+    );
   }
 
-  if (user?.goals && user.goals.length > 0) {
-    systemPrompt += `\nUSER'S GOALS: ${user.goals.join(', ')}\n`;
-  }
-
-  if (longContext) {
-    systemPrompt += `\nCONVERSATION CONTEXT:\n${longContext.context_text}\n`;
-  }
-
-  // Reverse messages to get chronological order
-  const conversationHistory = (messages || [])
-    .reverse()
-    .map((msg) => ({
-      role: msg.role as 'user' | 'assistant' | 'system',
-      content: msg.content,
-    }));
+  // Calculate total tokens
+  const totalTokens = estimateTokensFromMessages([
+    { role: 'system', content: systemPrompt },
+    ...conversationHistory,
+  ]);
 
   return {
     systemPrompt,
     conversationHistory,
+    totalTokens,
   };
 }
 
@@ -98,41 +134,30 @@ export async function shouldSummarizeContext(chatId: string): Promise<boolean> {
     .eq('id', chatId)
     .single();
 
-  // Trigger summarization if approaching 200k tokens
-  return (chat?.total_tokens || 0) > 180000;
+  if (!chat) return false;
+
+  return shouldSummarizeBasedOnTokens(chat.total_tokens);
 }
 
-export async function getMessageCountSinceLastSummary(
-  chatId: string
-): Promise<number> {
+export async function getMessagesForSummarization(
+  chatId: string,
+  messageCount: number
+): Promise<Array<{ role: 'user' | 'assistant'; content: string; id: string }>> {
   const supabase = await createClient();
 
-  // Get the most recent summary
-  const { data: lastSummary } = await supabase
-    .from('context_summaries')
-    .select('created_at')
+  const { data: messages } = await supabase
+    .from('messages')
+    .select('*')
     .eq('chat_id', chatId)
     .order('created_at', { ascending: false })
-    .limit(1)
-    .single();
+    .limit(messageCount);
 
-  if (!lastSummary) {
-    // No summaries yet, count all messages
-    const { count } = await supabase
-      .from('messages')
-      .select('*', { count: 'exact', head: true })
-      .eq('chat_id', chatId);
+  if (!messages) return [];
 
-    return count || 0;
-  }
-
-  // Count messages since last summary
-  const { count } = await supabase
-    .from('messages')
-    .select('*', { count: 'exact', head: true })
-    .eq('chat_id', chatId)
-    .gt('created_at', lastSummary.created_at);
-
-  return count || 0;
+  return messages.reverse().map((msg) => ({
+    id: msg.id,
+    role: msg.role as 'user' | 'assistant',
+    content: msg.content,
+  }));
 }
 
