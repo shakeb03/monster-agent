@@ -4,6 +4,12 @@ import { successResult, errorResult, ToolResult, getNextOnboardingStep } from '.
 import { validateGenerationContext, containsGenericPhrases } from './validators';
 import { validateContentQuality } from './quality-check';
 import { generateStrictAuthenticContent } from './strict-generator';
+import { analyzeContentStrategy } from '../strategy/content-analyzer';
+import { handleContentRequest } from './conversational-mode';
+import { generateHyperHumanContent } from './hyper-human-generator';
+import { buildSemanticContext, resolveUserIntent, preventRedundantContent } from './semantic-context';
+import { getCachedSemanticContext } from './context-cache';
+import { generateWithEnforcedVoice } from '../voice/enforced-generator';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
@@ -153,6 +159,56 @@ const AGENT_TOOLS = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'plan_next_post',
+      description: 'Analyze user\'s content strategy and start conversation about their next post. Use this when user asks to "write post", "draft post", or similar vague requests. This helps guide them strategically.',
+      parameters: {
+        type: 'object',
+        properties: {},
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'generate_human_post',
+      description: 'Generate hyper-authentic post after conversation has refined the intent. Only use after user has confirmed topic and angle through conversation.',
+      parameters: {
+        type: 'object',
+        properties: {
+          refined_intent: {
+            type: 'object',
+            description: 'Topic and angle extracted from conversation',
+            properties: {
+              topic: { type: 'string' },
+              angle: { type: 'string' },
+            },
+          },
+        },
+        required: ['refined_intent'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'understand_user_context',
+      description: 'Build semantic understanding of what user has built and knows from their posts. Use this BEFORE asking clarifying questions when user mentions ambiguous terms. Resolves what user actually means.',
+      parameters: {
+        type: 'object',
+        properties: {
+          user_message: { 
+            type: 'string', 
+            description: 'What user just said (e.g., "write about Mem")' 
+          },
+        },
+        required: ['user_message'],
+      },
+    },
+  },
 ];
 
 export async function runAgent(
@@ -185,51 +241,119 @@ export async function runAgent(
   const messages: any[] = [
     {
       role: 'system',
-      content: `You are an intelligent LinkedIn content agent. Your PRIMARY GOAL is to create content that sounds EXACTLY like the user.
+      content: `You are an intelligent LinkedIn content strategist with SEMANTIC UNDERSTANDING of the user.
+
+## CRITICAL: UNDERSTAND BEFORE ASKING
+
+ALWAYS call understand_user_context BEFORE asking clarifying questions when user mentions ambiguous terms.
+
+Example of WRONG behavior:
+User: "let's write about Mem"
+You: "Are you referring to memory management?"
+❌ You should have checked their posts first!
+
+Example of RIGHT behavior:
+User: "let's write about Mem"
+You: [call understand_user_context]
+Context: User built "Mem bridge" - a Readwise to Mem sync tool
+You: "Got it - the Mem bridge you built! Want to write about the initial build or the production lessons?"
+✅ You understood context from their posts!
+
+## YOUR PROCESS FOR AMBIGUOUS REQUESTS
+
+1. User says something with ambiguous terms (e.g., "write about X")
+2. You call understand_user_context(user_message)
+3. Tool returns:
+   - semanticContext: what they've built, their expertise, tools they use
+   - resolution: { resolved: true/false, topic, context, matchedProject }
+   - redundancyCheck: have they covered this topic before?
+4. If resolution.resolved = true:
+   - Don't ask "what is X?"
+   - Use the matched context
+   - If redundancyCheck shows they've covered it, suggest new angle
+   - Ask strategic questions (angle, depth, etc.)
+5. If resolution.resolved = false:
+   - Then ask what they mean
+
+## EXAMPLES
+
+User: "write about mem"
+Tool: { resolved: true, topic: "Mem bridge", context: "Readwise to Mem sync tool user built" }
+You: "The Mem bridge! Want to write about the initial build, the production issues, or the UX decisions?"
+
+User: "write about system design"
+Tool: { resolved: false }
+You: "System design is broad. What specific aspect - constraints you've learned from, a project you built, or general principles?"
+
+User: "write about that bridge thing"
+Tool: { resolved: true, topic: "Mem bridge", confidence: 0.9 }
+You: "The Mem bridge you built! Technical architecture or lessons from production?"
+
+## KEY PRINCIPLE
+
+Never ask about things you can learn from their posts. Use semantic understanding FIRST.
+
+## YOUR APPROACH TO CONTENT REQUESTS
+
+When user says "draft my next post" or similar vague requests:
+
+1. DON'T immediately generate - this creates random, disconnected content
+2. DO start a conversation:
+   - Call plan_next_post tool
+   - Use the conversational response to ask what they want to talk about
+   - Suggest strategic topics based on their content gaps and goals
+   - Ask about angle (story, advice, observation, contrarian take, etc.)
+   - Confirm their direction before generating
+
+3. During conversation:
+   - Be casual and helpful
+   - Suggest strategic directions based on their content narrative
+   - Explain WHY certain topics make sense now
+   - Ask one question at a time
+   - Guide them to coherent content strategy
+
+4. When ready to generate:
+   - User confirms topic and angle
+   - Call generate_human_post with refined intent
+   - Return hyper-authentic content that fits their narrative
+
+## EXAMPLE CONVERSATION FLOW
+
+User: "draft my next post"
+You: [Call plan_next_post, use its conversational response]
+"I see you've posted about productivity and remote work lately. Want to continue that thread? Or you haven't talked about leadership in a while - that could be interesting?"
+
+User: "leadership sounds good"
+You: "Cool! Leadership it is. What angle - a personal story about a leadership lesson, practical advice, or maybe a contrarian take?"
+
+User: "personal story"
+You: "Perfect. A leadership story. Since your goal is building thought leadership, a vulnerable story about a mistake could resonate. Sound good?"
+
+User: "yes"
+You: [Call generate_human_post with topic="leadership", angle="personal story"]
 
 ## AUTHENTICITY REQUIREMENTS
 
 Before generating ANY content, you MUST:
-1. Call get_top_performing_posts to see real examples
-2. Call get_viral_patterns to understand what works
-3. Call get_user_profile to get voice analysis
+1. Have a conversation to understand intent
+2. Use plan_next_post to analyze strategy
+3. Use generate_human_post (not generate_viral_content) for final content
 
-When generating content:
-1. Start by analyzing their top post hooks word-for-word
-2. Match their sentence structure, not generic patterns
-3. Use their vocabulary, not buzzwords
-4. Apply ONLY patterns proven for them
-5. If they don't use emojis, DON'T add emojis
-6. If they write short posts, write short posts
+The generate_human_post tool creates content that:
+- Sounds like casual human speech (not AI)
+- Uses contractions, short sentences, natural flow
+- Avoids em dashes, semicolons, corporate speak
+- Matches their exact writing patterns
+- Could pass as written by them texting thoughts
 
 ## RED FLAGS (Never Generate)
 
 ❌ "In the ever-evolving world of..."
 ❌ "As a [role] passionate about..."
-❌ "Key Takeaways:" sections with bullets
-❌ Excessive emojis (unless user uses them)
-❌ Generic "share your thoughts" CTAs
-❌ Buzzword salad
-❌ Posts that could be from anyone
-
-## QUALITY CHECK
-
-Before responding, ask yourself:
-- Does this sound like the user's actual posts?
-- Did I use their real hooks?
-- Did I match their tone and style?
-- Would someone recognize this as their writing?
-
-If you answer "no" to any, start over.
-
-## WHEN TO REFUSE
-
-If you don't have:
-- Voice analysis
-- Example posts (minimum 3)
-- Viral patterns
-
-DO NOT generate generic content. Instead, explain what's missing and how to get it.
+❌ "Key Takeaways:" sections
+❌ Em dashes (—) or semicolons (;)
+❌ Words like "delve", "leverage", "harness", "unlock"
+❌ AI giveaways: "I hope this helps", "it's important to note"
 
 ## HANDLING USER REFERENCES
 When user says:
@@ -405,6 +529,18 @@ Always gather context BEFORE generating NEW content. Never respond with question
 
         case 'reanalyze_posts':
           toolResult = await reanalyzePosts(user.id); // Use context userId
+          break;
+
+        case 'plan_next_post':
+          toolResult = await planNextPost(user.id, previousMessages || []);
+          break;
+
+        case 'generate_human_post':
+          toolResult = await generateHumanPost(user.id, toolArgs.refined_intent);
+          break;
+
+        case 'understand_user_context':
+          toolResult = await understandUserContext(user.id, toolArgs.user_message);
           break;
 
         default:
@@ -1103,6 +1239,150 @@ async function analyzeFromVoiceData(userId: string): Promise<ToolResult> {
   } catch (error) {
     return errorResult('Error analyzing voice data', {
       reason: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+}
+
+async function planNextPost(userId: string, conversationHistory: any[]): Promise<ToolResult> {
+  try {
+    console.log('[planNextPost] Analyzing content strategy');
+    
+    // Analyze content strategy
+    const strategy = await analyzeContentStrategy(userId);
+
+    // Get last user message from conversation
+    const lastUserMessage = conversationHistory
+      .filter(m => m.role === 'user')
+      .pop()?.content || 'draft my next post';
+
+    console.log('[planNextPost] Last user message:', lastUserMessage);
+
+    // Handle conversationally
+    const result = await handleContentRequest(
+      lastUserMessage,
+      strategy,
+      conversationHistory
+    );
+
+    if (result.shouldGenerate) {
+      console.log('[planNextPost] Ready to generate with intent:', result.refinedIntent);
+      
+      return successResult({
+        shouldGenerate: true,
+        refinedIntent: result.refinedIntent,
+        strategy,
+        message: 'User is ready to generate content',
+      });
+    }
+
+    console.log('[planNextPost] Continuing conversation');
+
+    return successResult({
+      shouldGenerate: false,
+      conversationalResponse: result.response,
+      strategy,
+      suggestedTopics: strategy.suggestedNextTopics,
+      contentGaps: strategy.contentGaps,
+    });
+  } catch (error) {
+    console.error('[planNextPost] Error:', error);
+    return errorResult('Error planning next post', {
+      reason: error instanceof Error ? error.message : 'Unknown error',
+      suggestions: ['Try asking about specific topics', 'Check if posts have been analyzed'],
+    });
+  }
+}
+
+async function generateHumanPost(userId: string, refinedIntent: any): Promise<ToolResult> {
+  try {
+    console.log('[generateHumanPost] Generating with enforced voice...');
+    
+    const result = await generateWithEnforcedVoice(
+      userId,
+      refinedIntent.topic,
+      refinedIntent.angle || 'personal story'
+    );
+
+    if (result.voiceScore < 7) {
+      return errorResult('Generated content failed voice validation', {
+        reason: `Voice score: ${result.voiceScore}/10`,
+        issues: result.issues,
+        suggestions: [
+          'Voice DNA might need recalibration',
+          'Try a different topic or angle',
+        ],
+      });
+    }
+
+    console.log('[generateHumanPost] Successfully generated with voice score:', result.voiceScore);
+
+    return successResult({
+      post: result.post,
+      voiceScore: result.voiceScore,
+      refinedIntent,
+      note: result.issues.length > 0
+        ? `Voice score: ${result.voiceScore}/10. Minor issues: ${result.issues.join(', ')}`
+        : `Perfect voice match! Score: ${result.voiceScore}/10`,
+      strategy: {
+        topic: refinedIntent.topic,
+        angle: refinedIntent.angle,
+        fitsNarrative: true,
+      },
+    });
+  } catch (error) {
+    console.error('[generateHumanPost] Error:', error);
+    return errorResult('Error generating human post', {
+      reason: error instanceof Error ? error.message : 'Unknown error',
+      suggestions: [
+        'Ensure posts have been imported',
+        'Check voice analysis exists',
+        'Try being more specific about topic',
+      ],
+    });
+  }
+}
+
+async function understandUserContext(userId: string, userMessage: string): Promise<ToolResult> {
+  try {
+    console.log('[understandUserContext] Analyzing message:', userMessage);
+    
+    // Build semantic context from all posts (cached)
+    const semanticContext = await getCachedSemanticContext(userId);
+
+    // Try to resolve what user meant
+    const resolution = await resolveUserIntent(userMessage, semanticContext);
+
+    // Check for redundant content if topic was resolved
+    let redundancyCheck = null;
+    if (resolution.resolved && resolution.topic) {
+      redundancyCheck = await preventRedundantContent(userId, resolution.topic);
+    }
+
+    console.log('[understandUserContext] Resolution:', resolution.resolved ? 'SUCCESS' : 'FAILED');
+
+    return successResult({
+      semanticContext: {
+        projects: semanticContext.userProjects,
+        expertise: semanticContext.userExpertise,
+        recentWork: semanticContext.recentWork,
+      },
+      resolution: {
+        resolved: resolution.resolved,
+        topic: resolution.topic,
+        context: resolution.context,
+        matchedProject: resolution.matchedProject,
+      },
+      redundancyCheck,
+      shouldAskForClarification: !resolution.resolved,
+    });
+  } catch (error) {
+    console.error('[understandUserContext] Error:', error);
+    return errorResult('Failed to build context understanding', {
+      reason: error instanceof Error ? error.message : 'Unknown error',
+      suggestions: [
+        'Check if user has posts imported',
+        'Try with more specific query',
+      ],
     });
   }
 }

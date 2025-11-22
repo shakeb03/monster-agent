@@ -426,3 +426,96 @@ CREATE POLICY "Users can insert own agent logs" ON agent_logs
     FOR INSERT
     WITH CHECK (user_id IN (SELECT id FROM users WHERE clerk_user_id = auth.jwt() ->> 'sub'));
 
+-- Step 19: Semantic Context Table
+CREATE TABLE user_semantic_context (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    projects JSONB DEFAULT '[]'::jsonb,
+    expertise TEXT[],
+    tools_mentioned TEXT[],
+    contextual_knowledge JSONB DEFAULT '{}'::jsonb,
+    last_updated TIMESTAMPTZ DEFAULT NOW(),
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX idx_user_semantic_context_user_id ON user_semantic_context(user_id);
+CREATE INDEX idx_user_semantic_context_updated ON user_semantic_context(last_updated);
+
+-- Enable RLS
+ALTER TABLE user_semantic_context ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies
+CREATE POLICY "Users can read own semantic context" ON user_semantic_context
+    FOR SELECT
+    USING (user_id IN (SELECT id FROM users WHERE clerk_user_id = auth.jwt() ->> 'sub'));
+
+CREATE POLICY "Users can insert own semantic context" ON user_semantic_context
+    FOR INSERT
+    WITH CHECK (user_id IN (SELECT id FROM users WHERE clerk_user_id = auth.jwt() ->> 'sub'));
+
+CREATE POLICY "Users can update own semantic context" ON user_semantic_context
+    FOR UPDATE
+    USING (user_id IN (SELECT id FROM users WHERE clerk_user_id = auth.jwt() ->> 'sub'));
+
+-- Trigger to refresh when new posts are added
+CREATE OR REPLACE FUNCTION refresh_semantic_context()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Mark context as stale (will be regenerated on next request)
+    UPDATE user_semantic_context 
+    SET last_updated = NOW() - INTERVAL '2 hours'
+    WHERE user_id = NEW.user_id;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER refresh_context_on_new_post
+    AFTER INSERT ON linkedin_posts
+    FOR EACH ROW
+    EXECUTE FUNCTION refresh_semantic_context();
+
+-- Update trigger for user_semantic_context
+CREATE TRIGGER update_user_semantic_context_updated_at
+    BEFORE UPDATE ON user_semantic_context
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+-- Step 20: Voice DNA Cache Table
+CREATE TABLE voice_dna_cache (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    voice_dna JSONB NOT NULL,
+    posts_analyzed INTEGER NOT NULL,
+    last_updated TIMESTAMPTZ DEFAULT NOW(),
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX idx_voice_dna_user_id ON voice_dna_cache(user_id);
+CREATE INDEX idx_voice_dna_last_updated ON voice_dna_cache(last_updated);
+
+-- Enable RLS
+ALTER TABLE voice_dna_cache ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies
+CREATE POLICY "Users can read own voice DNA" ON voice_dna_cache
+    FOR SELECT
+    USING (user_id IN (SELECT id FROM users WHERE clerk_user_id = auth.jwt() ->> 'sub'));
+
+CREATE POLICY "Users can insert own voice DNA" ON voice_dna_cache
+    FOR INSERT
+    WITH CHECK (user_id IN (SELECT id FROM users WHERE clerk_user_id = auth.jwt() ->> 'sub'));
+
+CREATE POLICY "Users can update own voice DNA" ON voice_dna_cache
+    FOR UPDATE
+    USING (user_id IN (SELECT id FROM users WHERE clerk_user_id = auth.jwt() ->> 'sub'));
+
+CREATE POLICY "Users can delete own voice DNA" ON voice_dna_cache
+    FOR DELETE
+    USING (user_id IN (SELECT id FROM users WHERE clerk_user_id = auth.jwt() ->> 'sub'));
+
+-- Update trigger for voice_dna_cache
+CREATE TRIGGER update_voice_dna_cache_updated_at
+    BEFORE UPDATE ON voice_dna_cache
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
