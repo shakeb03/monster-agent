@@ -8,47 +8,48 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY!,
 });
 
-export async function POST(req: NextRequest) {
+async function analyzePostsInBackground(userId: string, userEmail: string) {
+  console.log('[analyze-posts-bg] Starting background analysis for user:', userEmail);
+  
+  const supabase = createAdminClient();
+
   try {
-    const { userId } = await auth();
-    
-    if (!userId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
 
-    // Use admin client to bypass RLS
-    const supabase = createAdminClient();
-
-    // Get user from database
-    const { data: user, error: userError } = await supabase
-      .from('users')
-      .select('*')
-      .eq('clerk_user_id', userId)
-      .single();
-
-    if (userError || !user) {
-      console.error('[analyze-posts] User not found for clerk_user_id:', userId, userError);
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
-    }
-
-    console.log('[analyze-posts] Starting analysis for user:', user.email);
-
-    // Get all posts for the user
     const { data: posts, error: postsError } = await supabase
       .from('linkedin_posts')
       .select('*')
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .order('posted_at', { ascending: false });
 
     if (postsError || !posts || posts.length === 0) {
-      return NextResponse.json(
-        { error: 'No posts found to analyze' },
-        { status: 404 }
-      );
+      console.error('[analyze-posts-bg] No posts found:', postsError);
+      return;
     }
 
-    // Analyze each post individually
-    for (const post of posts) {
+    console.log('[analyze-posts-bg] Found', posts.length, 'posts total');
+
+    // Check which posts already have analysis
+    const postIds = posts.map(p => p.id);
+    const { data: existingAnalyses } = await supabase
+      .from('post_analysis')
+      .select('post_id')
+      .in('post_id', postIds);
+
+    const analyzedPostIds = new Set(existingAnalyses?.map(a => a.post_id) || []);
+    
+    // Filter to only posts that need analysis
+    const postsToAnalyze = posts.filter(p => !analyzedPostIds.has(p.id));
+
+    console.log('[analyze-posts-bg] Already analyzed:', analyzedPostIds.size);
+    console.log('[analyze-posts-bg] Need to analyze:', postsToAnalyze.length);
+
+    if (postsToAnalyze.length === 0) {
+      console.log('[analyze-posts-bg] All posts already analyzed, skipping');
+      return;
+    }
+
+    // Analyze only posts that need analysis
+    for (const post of postsToAnalyze) {
       const analysisPrompt = `Analyze this LinkedIn post and provide detailed insights:
 
 Post Text: ${post.post_text}
@@ -64,8 +65,7 @@ Provide analysis in the following JSON format:
   "hook_analysis": "Analysis of the opening hook and its effectiveness",
   "engagement_analysis": "Why this post did or didn't perform well",
   "what_worked": "Specific elements that contributed to success",
-  "what_didnt_work": "Areas for improvement",
-  "posting_time": "HH:MM format of when posted"
+  "what_didnt_work": "Areas for improvement"
 }`;
 
       const response = await openai.chat.completions.create({
@@ -86,11 +86,24 @@ Provide analysis in the following JSON format:
 
       const analysis = JSON.parse(response.choices[0].message.content || '{}');
 
+      console.log('[analyze-posts-bg] Analyzed post', post.id, '- Tone:', analysis.tone);
+
+      // Extract time from post.posted_at if available
+      let postingTime = null;
+      if (post.posted_at) {
+        try {
+          const date = new Date(post.posted_at);
+          postingTime = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+        } catch (e) {
+          console.log('[analyze-posts-bg] Could not extract time from posted_at');
+        }
+      }
+
       // Save post analysis
-      await supabase
+      const { error: insertError } = await supabase
         .from('post_analysis')
         .insert({
-          user_id: user.id,
+          user_id: userId,
           post_id: post.id,
           tone: analysis.tone,
           topics: analysis.topics || [],
@@ -98,11 +111,19 @@ Provide analysis in the following JSON format:
           engagement_analysis: analysis.engagement_analysis,
           what_worked: analysis.what_worked,
           what_didnt_work: analysis.what_didnt_work,
-          posting_time: analysis.posting_time,
+          posting_time: postingTime,
           analysis_status: 'completed',
           raw_analysis: analysis,
         });
+
+      if (insertError) {
+        console.error('[analyze-posts-bg] Error inserting analysis for post', post.id, ':', insertError);
+      } else {
+        console.log('[analyze-posts-bg] ✓ Saved analysis for post', post.id);
+      }
     }
+
+    console.log('[analyze-posts-bg] Completed analysis for', postsToAnalyze.length, 'new posts');
 
     // Generate overall voice analysis
     const voiceAnalysisPrompt = `Based on these ${posts.length} LinkedIn posts, create a comprehensive voice and style profile:
@@ -148,11 +169,13 @@ Provide analysis in the following JSON format:
 
     const voiceAnalysis = JSON.parse(voiceResponse.choices[0].message.content || '{}');
 
+    console.log('[analyze-posts-bg] Saving voice analysis');
+
     // Save voice analysis
-    await supabase
+    const { error: voiceError } = await supabase
       .from('voice_analysis')
       .upsert({
-        user_id: user.id,
+        user_id: userId,
         overall_tone: voiceAnalysis.overall_tone,
         writing_style: voiceAnalysis.writing_style,
         common_topics: voiceAnalysis.common_topics || [],
@@ -165,6 +188,12 @@ Provide analysis in the following JSON format:
         analysis_summary: voiceAnalysis.analysis_summary,
       });
 
+    if (voiceError) {
+      console.error('[analyze-posts-bg] Error saving voice analysis:', voiceError);
+    } else {
+      console.log('[analyze-posts-bg] ✓ Saved voice analysis');
+    }
+
     // Extract viral patterns from top posts
     const topPosts = posts
       .filter(p => p.engagement_rate && p.engagement_rate > 5)
@@ -172,7 +201,7 @@ Provide analysis in the following JSON format:
       .slice(0, 10);
 
     if (topPosts.length > 0) {
-      console.log('[analyze-posts] Extracting viral patterns from', topPosts.length, 'top posts');
+      console.log('[analyze-posts-bg] Extracting viral patterns from', topPosts.length, 'top posts');
       
       // Get post analysis for top posts
       const { data: postAnalyses } = await supabase
@@ -189,26 +218,56 @@ Provide analysis in the following JSON format:
         };
       });
 
-      const viralPatterns = await extractViralPatterns(user.id, postsWithAnalysis);
-      await saveViralPatterns(user.id, viralPatterns);
+      const viralPatterns = await extractViralPatterns(userId, postsWithAnalysis);
+      await saveViralPatterns(userId, viralPatterns);
       
-      console.log('[analyze-posts] Saved', viralPatterns.length, 'viral patterns');
+      console.log('[analyze-posts-bg] ✓ Saved', viralPatterns.length, 'viral patterns');
     }
 
-    // Update user onboarding status
-    await supabase
-      .from('users')
-      .update({
-        onboarding_status: 'analyzed',
-      })
-      .eq('id', user.id);
+    console.log('[analyze-posts-bg] ✅ Background analysis completed successfully');
+  } catch (error) {
+    console.error('[analyze-posts-bg] ❌ Background analysis error:', error);
+  }
+}
 
+export async function POST(req: NextRequest) {
+  try {
+    const { userId } = await auth();
+    
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Use admin client to bypass RLS
+    const supabase = createAdminClient();
+
+    // Get user from database
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('clerk_user_id', userId)
+      .single();
+
+    if (userError || !user) {
+      console.error('[analyze-posts] User not found for clerk_user_id:', userId, userError);
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+
+    console.log('[analyze-posts] Triggering background analysis for user:', user.email);
+
+    // Trigger analysis in background (don't await)
+    analyzePostsInBackground(user.id, user.email).catch((error) => {
+      console.error('[analyze-posts] Background process error:', error);
+    });
+
+    // Return immediately
     return NextResponse.json({
       success: true,
-      postsAnalyzed: posts.length,
+      message: 'Analysis started in background',
+      status: 'processing',
     });
   } catch (error) {
-    console.error('Post analysis error:', error);
+    console.error('[analyze-posts] API error:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

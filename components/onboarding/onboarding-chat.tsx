@@ -94,16 +94,14 @@ export default function OnboardingChat({ user }: OnboardingChatProps) {
     setStep('analyzing');
 
     try {
-      // Analyze posts FIRST
-      const analysisResponse = await fetch('/api/onboarding/analyze-posts', {
+      // Start analysis in background (don't wait for it)
+      fetch('/api/onboarding/analyze-posts', {
         method: 'POST',
+      }).catch((error) => {
+        console.error('Background analysis failed:', error);
       });
 
-      if (!analysisResponse.ok) {
-        throw new Error('Failed to analyze posts');
-      }
-
-      // THEN save goals (which marks onboarding as completed)
+      // Save goals and complete onboarding immediately
       const goalsResponse = await fetch('/api/onboarding/goals', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -116,7 +114,7 @@ export default function OnboardingChat({ user }: OnboardingChatProps) {
 
       toast({
         title: 'Success',
-        description: 'Your profile has been analyzed!',
+        description: 'Your profile is being analyzed in the background!',
       });
 
       setStep('completed');
@@ -169,9 +167,9 @@ export default function OnboardingChat({ user }: OnboardingChatProps) {
           <div className="text-center space-y-4">
             <Loader2 className="h-12 w-12 animate-spin mx-auto text-primary" />
             <div>
-              <h2 className="text-2xl font-bold mb-2">Analyzing your content</h2>
+              <h2 className="text-2xl font-bold mb-2">Setting up your profile</h2>
               <p className="text-muted-foreground">
-                We're analyzing your writing style, voice, and what works best for you...
+                We're setting everything up. Your posts will be analyzed in the background...
               </p>
             </div>
           </div>
