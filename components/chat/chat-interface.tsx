@@ -7,20 +7,23 @@ import ChatInput from './chat-input';
 import AnalysisPanel from '../analysis/analysis-panel';
 import { useChat } from '@/hooks/use-chat';
 
+interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
 interface ChatInterfaceProps {
   chatId: string;
   userId: string;
 }
 
 export default function ChatInterface({ chatId, userId }: ChatInterfaceProps) {
-  const [initialMessages, setInitialMessages] = useState<any[]>([]);
-  const [isLoadingMessages, setIsLoadingMessages] = useState(true);
+  const [initialMessages, setInitialMessages] = useState<ChatMessage[]>([]);
 
   useEffect(() => {
     // Fetch initial messages
     async function fetchMessages() {
       try {
-        setIsLoadingMessages(true);
         const response = await fetch(`/api/messages?chatId=${chatId}`);
         if (response.ok) {
           const data = await response.json();
@@ -28,8 +31,6 @@ export default function ChatInterface({ chatId, userId }: ChatInterfaceProps) {
         }
       } catch (err) {
         console.error('Failed to fetch messages:', err);
-      } finally {
-        setIsLoadingMessages(false);
       }
     }
 

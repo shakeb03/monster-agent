@@ -165,7 +165,9 @@ Return ONLY valid JSON, no markdown formatting.`;
   const words = allText.split(/\s+/);
   const avgSentenceLength = words.length / sentences.length;
   
-  const paragraphs = posts.map(p => p.post_text.split('\n\n').filter(para => para.trim()));
+  const paragraphs = posts.map(p =>
+    p.post_text.split('\n\n').filter((para: string) => para.trim())
+  );
   const avgParagraphLength = paragraphs.flat().length / posts.length;
 
   console.log('[voice-dna] Metrics - Avg sentence length:', Math.round(avgSentenceLength), 'Avg paragraphs:', Math.round(avgParagraphLength));
@@ -190,7 +192,7 @@ Return ONLY valid JSON, no markdown formatting.`;
     usesFragments: /^\w+\.$|^\w+ \w+\.$/.test(allText),
     usesContractions: /\b(I'm|you're|it's|that's|don't|can't|won't)\b/.test(allText),
     usesQuestions: /\?/.test(allText),
-    usesEmojis: /[\u{1F300}-\u{1F9FF}]/u.test(allText),
+    usesEmojis: /[\uD800-\uDBFF][\uDC00-\uDFFF]/.test(allText),
     usesHashtags: /#\w+/.test(allText),
     hashtagStyle: extracted.hashtagStyle || 'specific tools and concepts',
     
@@ -342,4 +344,3 @@ export function getEmergencyVoiceDNA(): VoiceDNA {
     vulnerable: true,
   };
 }
-

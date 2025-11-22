@@ -39,12 +39,24 @@ export class ApifyInvalidInputError extends ApifyError {
   }
 }
 
-export function handleApifyError(error: any): ApifyError {
+type ApifyAPIError = {
+  response?: {
+    status?: number;
+  };
+  actorId?: string;
+  message?: string;
+};
+
+function isApifyAPIError(error: unknown): error is ApifyAPIError {
+  return typeof error === 'object' && error !== null;
+}
+
+export function handleApifyError(error: unknown): ApifyError {
   if (error instanceof ApifyError) {
     return error;
   }
 
-  if (error.response) {
+  if (isApifyAPIError(error) && error.response) {
     const status = error.response.status;
     
     if (status === 408 || status === 504) {
@@ -56,14 +68,15 @@ export function handleApifyError(error: any): ApifyError {
     }
     
     if (status === 400) {
-      return new ApifyInvalidInputError(error.message);
+      return new ApifyInvalidInputError(error.message || 'Invalid Apify input');
     }
   }
 
+  const message = isApifyAPIError(error) ? error.message : undefined;
+
   return new ApifyError(
-    error.message || 'Unknown Apify error',
+    message || 'Unknown Apify error',
     'APIFY_UNKNOWN',
     500
   );
 }
-

@@ -1,13 +1,6 @@
-import { ApifyClient } from '../client';
 import { validateLinkedInUrl, normalizeLinkedInUrl } from '../processors';
 
 describe('ApifyClient', () => {
-  let client: ApifyClient;
-
-  beforeEach(() => {
-    client = new ApifyClient(process.env.APIFY_API_KEY || 'test-key');
-  });
-
   describe('LinkedIn URL Validation', () => {
     it('should validate correct LinkedIn profile URLs', () => {
       expect(validateLinkedInUrl('https://www.linkedin.com/in/johndoe')).toBe(true);
@@ -36,4 +29,3 @@ describe('ApifyClient', () => {
     });
   });
 });
-

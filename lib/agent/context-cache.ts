@@ -1,11 +1,16 @@
 import { buildSemanticContext } from './semantic-context';
 import type { SemanticContext } from './semantic-context';
 
+interface CachedContext {
+  context: SemanticContext;
+  timestamp: number;
+}
+
 // Cache semantic context to avoid rebuilding every time
-const contextCache = new Map<string, { context: any; timestamp: number }>();
+const contextCache = new Map<string, CachedContext>();
 const CACHE_TTL = 1000 * 60 * 60; // 1 hour
 
-export async function getCachedSemanticContext(userId: string): Promise<any> {
+export async function getCachedSemanticContext(userId: string): Promise<SemanticContext> {
   const cached = contextCache.get(userId);
   const now = Date.now();
 
@@ -34,4 +39,3 @@ export function getCacheStats(): { size: number; users: string[] } {
     users: Array.from(contextCache.keys()),
   };
 }
-

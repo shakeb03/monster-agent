@@ -16,18 +16,17 @@ export async function createClient() {
           try {
             cookieStore.set({ name, value, ...options })
           } catch (error) {
-            // Handle cookie setting errors
+            console.error('[supabase-server] Failed to set cookie:', error)
           }
         },
         remove(name: string, options: CookieOptions) {
           try {
             cookieStore.set({ name, value: '', ...options })
           } catch (error) {
-            // Handle cookie removal errors
+            console.error('[supabase-server] Failed to remove cookie:', error)
           }
         },
       },
     }
   )
 }
-

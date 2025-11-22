@@ -23,19 +23,6 @@ export async function generateStrictAuthenticContent(userId: string, topic?: str
     throw new Error('NO POSTS FOUND. User must complete onboarding first.');
   }
 
-  // Get post analysis for these posts
-  const postIds = topPosts.map(p => (p as any).id);
-  const { data: analyses } = await supabase
-    .from('post_analysis')
-    .select('post_id, hook_analysis, what_worked')
-    .in('post_id', postIds);
-
-  // Merge analysis with posts
-  const postsWithAnalysis = topPosts.map(post => {
-    const analysis = analyses?.find((a: any) => a.post_id === (post as any).id);
-    return { ...post, analysis };
-  });
-
   // Step 2: Get voice analysis
   const { data: voice } = await supabase
     .from('voice_analysis')
@@ -52,7 +39,7 @@ export async function generateStrictAuthenticContent(userId: string, topic?: str
   // Step 3: EXTRACT EXACT PATTERNS from posts
   const realHooks = topPosts.map(p => p.post_text.split('\n')[0]);
   const avgLength = topPosts.reduce((sum, p) => sum + p.post_text.length, 0) / topPosts.length;
-  const usesEmojis = topPosts.some(p => /[\u{1F300}-\u{1F9FF}]/u.test(p.post_text));
+  const usesEmojis = topPosts.some(p => /[\uD800-\uDBFF][\uDC00-\uDFFF]/.test(p.post_text));
   const usesHashtags = topPosts.some(p => /#\w+/.test(p.post_text));
   const usesBullets = topPosts.some(p => /^[•\-\*]\s/m.test(p.post_text));
 
@@ -150,7 +137,7 @@ GO:`;
   console.log('[strict-generator] Generated post length:', generatedPost.length);
 
   // Step 6: VALIDATE before returning
-  const validation = await validatePost(generatedPost, topPosts, voice);
+  const validation = await validatePost(generatedPost, topPosts);
 
   console.log('[strict-generator] Validation score:', validation.score);
 
@@ -173,8 +160,7 @@ GO:`;
 
 async function validatePost(
   generated: string,
-  topPosts: any[],
-  voice: any
+  topPosts: Array<{ post_text: string }>
 ): Promise<{ score: number; issues: string[] }> {
   const issues: string[] = [];
   let score = 10;
@@ -204,8 +190,8 @@ async function validatePost(
   }
 
   // Check emoji usage
-  const hasEmojis = /[\u{1F300}-\u{1F9FF}]/u.test(generated);
-  const userUsesEmojis = topPosts.some(p => /[\u{1F300}-\u{1F9FF}]/u.test(p.post_text));
+  const hasEmojis = /[\uD800-\uDBFF][\uDC00-\uDFFF]/.test(generated);
+  const userUsesEmojis = topPosts.some(p => /[\uD800-\uDBFF][\uDC00-\uDFFF]/.test(p.post_text));
   
   if (hasEmojis !== userUsesEmojis) {
     issues.push(userUsesEmojis ? 'Should use emojis' : 'Should not use emojis');
@@ -223,4 +209,3 @@ async function validatePost(
 
   return { score: Math.max(0, score), issues };
 }
-

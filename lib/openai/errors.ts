@@ -27,29 +27,39 @@ export class OpenAIAuthenticationError extends OpenAIError {
   }
 }
 
-export function handleOpenAIError(error: any): OpenAIError {
+type OpenAIAPIError = {
+  status?: number;
+  message?: string;
+};
+
+function isOpenAIAPIError(error: unknown): error is OpenAIAPIError {
+  return typeof error === 'object' && error !== null;
+}
+
+export function handleOpenAIError(error: unknown): OpenAIError {
   if (error instanceof OpenAIError) {
     return error;
   }
 
-  if (error.status === 429) {
+  if (isOpenAIAPIError(error) && error.status === 429) {
     return new OpenAIRateLimitError();
   }
 
-  if (error.status === 401) {
+  if (isOpenAIAPIError(error) && error.status === 401) {
     return new OpenAIAuthenticationError();
   }
 
-  if (error.status === 400) {
+  if (isOpenAIAPIError(error) && error.status === 400) {
     return new OpenAIInvalidRequestError(
       error.message || 'Invalid request to OpenAI'
     );
   }
 
+  const message = isOpenAIAPIError(error) ? error.message : undefined;
+
   return new OpenAIError(
-    error.message || 'Unknown OpenAI error',
+    message || 'Unknown OpenAI error',
     'OPENAI_UNKNOWN',
-    error.status || 500
+    isOpenAIAPIError(error) ? error.status || 500 : 500
   );
 }
-

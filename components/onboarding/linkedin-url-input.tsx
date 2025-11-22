@@ -37,7 +37,7 @@ export default function LinkedInUrlInput({
   return (
     <div className="space-y-6">
       <div className="text-center space-y-2">
-        <h1 className="text-3xl font-bold">Welcome! Let's get started</h1>
+        <h1 className="text-3xl font-bold">Welcome! Let&apos;s get started</h1>
         <p className="text-muted-foreground">
           First, we need to analyze your LinkedIn profile and content to understand your unique voice.
         </p>
@@ -61,7 +61,7 @@ export default function LinkedInUrlInput({
         </div>
 
         <div className="bg-secondary/50 p-4 rounded-lg space-y-2">
-          <p className="text-sm font-medium">What we'll analyze:</p>
+          <p className="text-sm font-medium">What we&apos;ll analyze:</p>
           <ul className="text-sm text-muted-foreground space-y-1">
             <li>• Your recent LinkedIn posts</li>
             <li>• Your writing style and tone</li>

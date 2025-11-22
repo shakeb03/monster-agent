@@ -1,4 +1,4 @@
-import { auth } from '@clerk/nextjs';
+import { auth } from '@clerk/nextjs/server';
 import { redirect } from 'next/navigation';
 import { ReactNode } from 'react';
 import { createClient } from '@/lib/supabase/server';
@@ -12,7 +12,7 @@ export async function ProtectedRoute({
   children,
   requireOnboarding = false,
 }: ProtectedRouteProps) {
-  const { userId } = auth();
+  const { userId } = await auth();
 
   if (!userId) {
     redirect('/sign-in');
@@ -34,4 +34,3 @@ export async function ProtectedRoute({
 
   return <>{children}</>;
 }
-

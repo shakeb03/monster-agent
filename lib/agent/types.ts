@@ -1,13 +1,16 @@
-export interface ToolResult<T = any> {
+export interface ToolDiagnostics<TAlternative = unknown> {
+  reason?: string;
+  suggestions?: string[];
+  alternativeData?: TAlternative;
+  issues?: string[];
+}
+
+export interface ToolResult<TData = unknown, TFallback = unknown, TAlternative = unknown> {
   success: boolean;
-  data?: T;
+  data?: TData;
   error?: string;
-  fallback?: any;
-  diagnostics?: {
-    reason?: string;
-    suggestions?: string[];
-    alternativeData?: any;
-  };
+  fallback?: TFallback;
+  diagnostics?: ToolDiagnostics<TAlternative>;
 }
 
 export function successResult<T>(data: T): ToolResult<T> {
@@ -16,8 +19,8 @@ export function successResult<T>(data: T): ToolResult<T> {
 
 export function errorResult(
   error: string,
-  diagnostics?: ToolResult['diagnostics']
-): ToolResult {
+  diagnostics?: ToolDiagnostics
+): ToolResult<never> {
   return { success: false, error, diagnostics };
 }
 
@@ -33,4 +36,3 @@ export function getNextOnboardingStep(status: string): string {
   
   return steps[status] || 'Complete onboarding';
 }
-

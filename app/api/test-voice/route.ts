@@ -1,10 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { extractVoiceDNA } from '@/lib/voice/cache';
 import { generateWithEnforcedVoice } from '@/lib/voice/enforced-generator';
 import { createAdminClient } from '@/lib/supabase/admin';
 
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
     const { userId: clerkUserId } = await auth();
     if (!clerkUserId) {
@@ -76,4 +76,3 @@ export async function GET(req: NextRequest) {
     );
   }
 }
-

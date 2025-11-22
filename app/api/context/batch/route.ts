@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createAdminClient } from '@/lib/supabase/admin';
+import { createClient } from '@/lib/supabase/server';
 import { summarizeConversation } from '@/lib/openai/summarize';
 import { getMessagesForSummarization } from '@/lib/context/manager';
 import { estimateTokenCount } from '@/lib/openai/tokens';
@@ -123,4 +123,3 @@ async function updateLongContext(
     });
   }
 }
-

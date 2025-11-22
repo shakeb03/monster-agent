@@ -2,24 +2,23 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
 import LinkedInUrlInput from './linkedin-url-input';
 import GoalsInput from './goals-input';
 import ProgressIndicator from './progress-indicator';
 import { useToast } from '@/hooks/use-toast';
+import type { User } from '@/types/database';
 
 type OnboardingStep = 'linkedin_url' | 'fetching_data' | 'goals' | 'analyzing' | 'completed';
 
 interface OnboardingChatProps {
-  user: any;
+  user: User;
 }
 
 export default function OnboardingChat({ user }: OnboardingChatProps) {
   console.log('[OnboardingChat] Rendering with user:', user);
   
   const [step, setStep] = useState<OnboardingStep>('linkedin_url');
-  const [linkedInUrl, setLinkedInUrl] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
@@ -48,7 +47,6 @@ export default function OnboardingChat({ user }: OnboardingChatProps) {
   ];
 
   async function handleLinkedInSubmit(url: string) {
-    setLinkedInUrl(url);
     setIsLoading(true);
     setStep('fetching_data');
 
@@ -153,7 +151,7 @@ export default function OnboardingChat({ user }: OnboardingChatProps) {
             <div>
               <h2 className="text-2xl font-bold mb-2">Fetching your LinkedIn data</h2>
               <p className="text-muted-foreground">
-                We're gathering your profile and recent posts. This may take a minute...
+                We&apos;re gathering your profile and recent posts. This may take a minute...
               </p>
             </div>
           </div>
@@ -169,7 +167,7 @@ export default function OnboardingChat({ user }: OnboardingChatProps) {
             <div>
               <h2 className="text-2xl font-bold mb-2">Setting up your profile</h2>
               <p className="text-muted-foreground">
-                We're setting everything up. Your posts will be analyzed in the background...
+                We&apos;re setting everything up. Your posts will be analyzed in the background...
               </p>
             </div>
           </div>

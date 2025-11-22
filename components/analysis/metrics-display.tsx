@@ -83,7 +83,7 @@ export default function MetricsDisplay({ stats }: MetricsDisplayProps) {
               <div>
                 <p className="text-sm font-medium">Growth opportunity</p>
                 <p className="text-xs text-muted-foreground">
-                  Let's optimize your content
+                  Let&apos;s optimize your content
                 </p>
               </div>
             </div>

@@ -1,23 +1,24 @@
 import OpenAI from 'openai';
+import type { ContentStrategy } from '../strategy/content-analyzer';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
-interface ConversationState {
-  stage: 'understanding' | 'refining' | 'generating';
-  collectedInfo: {
-    topic?: string;
-    angle?: string;
-    goalAlignment?: string;
-    tone?: string;
-    urgency?: string;
-  };
+interface ConversationMessage {
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+}
+
+interface RefinedIntent {
+  topic: string;
+  angle: string;
+  confirmed: boolean;
 }
 
 export async function handleContentRequest(
   userMessage: string,
-  strategy: any,
-  conversationHistory: any[]
-): Promise<{ response: string; shouldGenerate: boolean; refinedIntent: any }> {
+  strategy: ContentStrategy,
+  conversationHistory: ConversationMessage[]
+): Promise<{ response: string; shouldGenerate: boolean; refinedIntent: RefinedIntent | null }> {
   
   console.log('[conversational-mode] Handling message, history length:', conversationHistory.length);
 
@@ -86,7 +87,7 @@ Response (natural, conversational, one question at a time):`;
   };
 }
 
-function checkIfReadyToGenerate(history: any[]): boolean {
+function checkIfReadyToGenerate(history: ConversationMessage[]): boolean {
   // Check if conversation has covered: topic, angle, and confirmation
   const conversationText = history.map(m => m.content).join(' ').toLowerCase();
   
@@ -107,7 +108,7 @@ function checkIfReadyToGenerate(history: any[]): boolean {
   return history.length >= 5 && hasTopic && hasConfirmation;
 }
 
-function extractIntentFromConversation(history: any[]): any {
+function extractIntentFromConversation(history: ConversationMessage[]): RefinedIntent {
   // Extract topic, angle, tone from conversation
   const userMessages = history.filter(m => m.role === 'user');
   
@@ -138,4 +139,3 @@ function extractIntentFromConversation(history: any[]): any {
     confirmed: true,
   };
 }
-

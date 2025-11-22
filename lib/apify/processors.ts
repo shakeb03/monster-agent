@@ -1,6 +1,4 @@
 import {
-  LinkedInProfileRaw,
-  LinkedInPostRaw,
   ProcessedLinkedInProfile,
   ProcessedLinkedInPost,
 } from '@/types/linkedin';
@@ -92,4 +90,3 @@ export function normalizeLinkedInUrl(url: string): string {
   
   return normalized;
 }
-

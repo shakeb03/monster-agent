@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { useUser as useClerkUser } from '@clerk/nextjs';
 import type { User } from '@/types/database';
 
@@ -19,7 +19,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchUser = async () => {
+  const fetchUser = useCallback(async () => {
     if (!clerkUser) {
       setUser(null);
       setIsLoading(false);
@@ -42,13 +42,13 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [clerkUser]);
 
   useEffect(() => {
     if (isLoaded) {
       fetchUser();
     }
-  }, [clerkUser, isLoaded]);
+  }, [fetchUser, isLoaded]);
 
   const refreshUser = async () => {
     setIsLoading(true);
@@ -71,4 +71,3 @@ export function useUser() {
 
   return context;
 }
-

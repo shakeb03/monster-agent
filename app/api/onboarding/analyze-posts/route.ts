@@ -1,5 +1,5 @@
 import { auth } from '@clerk/nextjs/server';
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import OpenAI from 'openai';
 import { extractViralPatterns, saveViralPatterns } from '@/lib/viral/pattern-analyzer';
@@ -94,8 +94,8 @@ Provide analysis in the following JSON format:
         try {
           const date = new Date(post.posted_at);
           postingTime = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
-        } catch (e) {
-          console.log('[analyze-posts-bg] Could not extract time from posted_at');
+        } catch (error) {
+          console.log('[analyze-posts-bg] Could not extract time from posted_at:', error);
         }
       }
 
@@ -230,7 +230,7 @@ Provide analysis in the following JSON format:
   }
 }
 
-export async function POST(req: NextRequest) {
+export async function POST() {
   try {
     const { userId } = await auth();
     
@@ -274,4 +274,3 @@ export async function POST(req: NextRequest) {
     );
   }
 }
-

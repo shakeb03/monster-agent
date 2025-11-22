@@ -6,7 +6,6 @@ import type { ChatContext } from '@/types/openai';
 
 interface ContextOptions {
   maxMessages?: number;
-  includeSystemPrompt?: boolean;
 }
 
 export async function getContextForChat(
@@ -15,7 +14,7 @@ export async function getContextForChat(
   chatType: 'standard' | 'new_perspective',
   options: ContextOptions = {}
 ): Promise<ChatContext> {
-  const { maxMessages = 50, includeSystemPrompt = true } = options;
+  const { maxMessages = 50 } = options;
 
   const supabase = await createClient();
 
@@ -57,7 +56,7 @@ export async function getContextForChat(
     chatType
   );
 
-  let conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+  const conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [];
 
   if (chatType === 'standard') {
     // Get long context summary for standard chats
@@ -165,8 +164,7 @@ export async function getMessagesForSummarization(
 // Viral-optimized context with aggressive compaction
 export async function getViralOptimizedContext(
   userId: string,
-  chatId: string,
-  chatType: 'standard' | 'new_perspective'
+  chatId: string
 ): Promise<ChatContext> {
   const supabase = createAdminClient();
 
@@ -215,4 +213,3 @@ Always use these patterns. Be bold, specific, engaging.`;
     totalTokens: estimateTokenCount(systemPrompt) + estimateTokenCount(JSON.stringify(recentMessages)),
   };
 }
-

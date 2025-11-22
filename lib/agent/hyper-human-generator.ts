@@ -1,12 +1,18 @@
 import OpenAI from 'openai';
 import { createAdminClient } from '@/lib/supabase/admin';
+import type { ContentStrategy } from '../strategy/content-analyzer';
+
+interface RefinedIntent {
+  topic: string;
+  angle?: string;
+}
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
 export async function generateHyperHumanContent(
   userId: string,
-  refinedIntent: any,
-  strategy: any
+  refinedIntent: RefinedIntent,
+  strategy: ContentStrategy
 ): Promise<string> {
   const supabase = createAdminClient();
 
@@ -47,11 +53,14 @@ export async function generateHyperHumanContent(
   
   // Extract human patterns
   const usesContractions = /\b(I'm|you're|we're|that's|it's|don't|can't|won't)\b/i.test(post1);
-  const usesShortSentences = post1.split(/[.!?]/).filter(s => s.trim().length > 0).some(s => s.length < 50);
+  const usesShortSentences = post1
+    .split(/[.!?]/)
+    .filter((sentence: string) => sentence.trim().length > 0)
+    .some((sentence: string) => sentence.length < 50);
   const usesFragments = /^\w+\.$|^\w+ \w+\.$/.test(post1); // One or two word sentences
   const conversationalStart = /^(So|Well|Here's|Look|Listen|Honestly)/i.test(post1);
   const usesQuestions = /\?/.test(post1);
-  const paragraphs = post1.split('\n\n').filter(p => p.trim());
+  const paragraphs = post1.split('\n\n').filter((paragraph: string) => paragraph.trim());
   const avgParagraphLength = paragraphs.length;
 
   console.log('[hyper-human] Writing patterns:', {
@@ -138,7 +147,7 @@ Write like a human texting their thoughts, not like AI generating content.`,
   const generatedPost = response.choices[0].message.content || '';
 
   // Post-process: Remove AI artifacts
-  let cleaned = generatedPost
+  const cleaned = generatedPost
     .replace(/—/g, '-') // Replace em dashes
     .replace(/;/g, '.') // Replace semicolons
     .replace(/\*\*/g, '') // Remove bold markdown
@@ -148,4 +157,3 @@ Write like a human texting their thoughts, not like AI generating content.`,
 
   return cleaned;
 }
-

@@ -1,4 +1,12 @@
-import { currentUser } from '@clerk/nextjs';
+import { currentUser } from '@clerk/nextjs/server';
+
+type ClerkUserLike = {
+  emailAddresses?: Array<{ id: string; emailAddress: string }>;
+  primaryEmailAddressId?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  username?: string | null;
+};
 
 export async function getCurrentClerkUser() {
   try {
@@ -10,27 +18,26 @@ export async function getCurrentClerkUser() {
   }
 }
 
-export function getEmailFromClerkUser(user: any): string | null {
-  const primaryEmail = user?.emailAddresses.find(
-    (e: any) => e.id === user.primaryEmailAddressId
+export function getEmailFromClerkUser(user: ClerkUserLike | null | undefined): string | null {
+  const primaryEmail = user?.emailAddresses?.find(
+    (email) => email.id === user.primaryEmailAddressId
   );
 
   return primaryEmail?.emailAddress || null;
 }
 
-export function getUserDisplayName(user: any): string {
-  if (user.firstName && user.lastName) {
+export function getUserDisplayName(user: ClerkUserLike | null | undefined): string {
+  if (user?.firstName && user?.lastName) {
     return `${user.firstName} ${user.lastName}`;
   }
   
-  if (user.firstName) {
+  if (user?.firstName) {
     return user.firstName;
   }
 
-  if (user.username) {
+  if (user?.username) {
     return user.username;
   }
 
   return getEmailFromClerkUser(user) || 'User';
 }
-

@@ -3,7 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
-interface ContentStrategy {
+export interface ContentStrategy {
   recentTopics: string[];
   topicFrequency: Record<string, number>;
   lastPostDate: string | null;
@@ -84,7 +84,7 @@ export async function analyzeContentStrategy(userId: string): Promise<ContentStr
   // Find content gaps
   const userExpertise = voice?.common_topics || [];
   const recentTopicsSet = new Set(allTopics);
-  const contentGaps = userExpertise.filter(topic => !recentTopicsSet.has(topic));
+  const contentGaps = userExpertise.filter((topic: string) => !recentTopicsSet.has(topic));
 
   console.log('[content-analyzer] Topic counts:', topicCounts);
   console.log('[content-analyzer] Content gaps:', contentGaps);
@@ -142,7 +142,7 @@ Return JSON:
   console.log('[content-analyzer] Generated', result.suggestions?.length || 0, 'suggestions');
 
   return {
-    recentTopics: [...new Set(allTopics)],
+    recentTopics: Array.from(new Set(allTopics)),
     topicFrequency: topicCounts,
     lastPostDate: posts[0]?.posted_at || null,
     contentGaps,
@@ -151,4 +151,3 @@ Return JSON:
     userGoals: user?.goals || [],
   };
 }
-

@@ -82,7 +82,7 @@ CRITICAL:
 
   // POST-PROCESSING: Clean AI artifacts and enforce formatting
   generatedPost = cleanAIArtifacts(generatedPost, voiceDNA);
-  generatedPost = enforceFormattingRules(generatedPost, voiceDNA);
+  generatedPost = enforceFormattingRules(generatedPost);
 
   // Step 6: Validate voice match
   const validation = await validateVoiceMatch(generatedPost, voiceDNA, posts);
@@ -111,7 +111,7 @@ CRITICAL:
 
     generatedPost = retryResponse.choices[0].message.content || '';
     generatedPost = cleanAIArtifacts(generatedPost, voiceDNA);
-    generatedPost = enforceFormattingRules(generatedPost, voiceDNA);
+    generatedPost = enforceFormattingRules(generatedPost);
     
     console.log('[enforced-voice] Regenerated post');
   }
@@ -262,7 +262,7 @@ function cleanAIArtifacts(post: string, voiceDNA: VoiceDNA): string {
 
   // Fix punctuation based on their style
   if (!voiceDNA.usesEmojis) {
-    cleaned = cleaned.replace(/[\u{1F300}-\u{1F9FF}]/gu, '');
+    cleaned = cleaned.replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, '');
   }
 
   // Remove em dashes (replace with regular dash)
@@ -278,7 +278,7 @@ function cleanAIArtifacts(post: string, voiceDNA: VoiceDNA): string {
   return cleaned.trim();
 }
 
-function enforceFormattingRules(post: string, voiceDNA: VoiceDNA): string {
+function enforceFormattingRules(post: string): string {
   let cleaned = post;
 
   // 1. Fix bullet format: asterisks → dashes
@@ -547,4 +547,3 @@ Return JSON: { "similarity": number, "reasoning": "specific differences" }`;
     issues,
   };
 }
-

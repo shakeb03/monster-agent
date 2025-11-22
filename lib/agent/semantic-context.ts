@@ -3,7 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
-interface SemanticContext {
+export interface SemanticContext {
   userProjects: Array<{
     name: string;
     description: string;
@@ -233,7 +233,7 @@ export async function preventRedundantContent(
   console.log('[prevent-redundant] Found', posts.length, 'existing posts');
 
   // Analyze what angles were covered
-  const angles = posts.map(p => {
+  const angles: string[] = posts.map(p => {
     const text = p.post_text.toLowerCase();
     if (text.includes('failed') || text.includes('broke')) return 'failure story';
     if (text.includes('built') || text.includes('weekend')) return 'build story';
@@ -244,8 +244,10 @@ export async function preventRedundantContent(
   const uncoveredAngles = ['failure story', 'build story', 'lessons', 'deep dive', 'tips']
     .filter(angle => !angles.includes(angle));
 
+  const uniqueAngles = Array.from(new Set(angles));
+
   const suggestion = uncoveredAngles.length > 0
-    ? `You've covered this from ${[...new Set(angles)].join(', ')} angles. Try: ${uncoveredAngles[0]}`
+    ? `You've covered this from ${uniqueAngles.join(', ')} angles. Try: ${uncoveredAngles[0]}`
     : 'You\'ve covered this extensively. Suggest a fresh topic or new angle.';
 
   console.log('[prevent-redundant] Suggestion:', suggestion);
@@ -256,4 +258,3 @@ export async function preventRedundantContent(
     suggestion,
   };
 }
-

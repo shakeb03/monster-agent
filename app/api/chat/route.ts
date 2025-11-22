@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Create chat if needed
-    let currentChatId = chatId;
+    let currentChatId = chatId ?? '';
     if (!currentChatId) {
       const { data: newChat } = await supabase
         .from('chats')
@@ -51,7 +51,11 @@ export async function POST(req: NextRequest) {
         .select()
         .single();
 
-      currentChatId = newChat?.id;
+      if (!newChat?.id) {
+        throw new Error('Failed to create chat');
+      }
+
+      currentChatId = newChat.id;
     }
 
     // Save user message BEFORE running agent (so it's in history)
@@ -115,4 +119,3 @@ export async function POST(req: NextRequest) {
     );
   }
 }
-

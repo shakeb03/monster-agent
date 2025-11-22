@@ -4,7 +4,6 @@ import { cn } from '@/lib/utils';
 import { Avatar } from '@/components/ui/avatar';
 import { User, Bot } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
-import type { Components } from 'react-markdown';
 
 interface ChatMessageProps {
   role: 'user' | 'assistant';
@@ -34,14 +33,16 @@ export default function ChatMessage({ role, content, timestamp }: ChatMessagePro
         <div
           className={cn(
             'inline-block px-4 py-2.5 rounded-2xl max-w-[85%]',
+            // Removed colored backgrounds - now transparent/blends with background
             isUser
-              ? 'bg-primary text-primary-foreground rounded-tr-sm'
-              : 'bg-muted text-foreground rounded-tl-sm'
+              ? 'bg-transparent text-foreground rounded-tr-sm'
+              : 'bg-transparent text-foreground rounded-tl-sm'
           )}
         >
           <div className={cn(
             'prose prose-sm max-w-none',
-            isUser ? 'prose-invert' : 'dark:prose-invert',
+            // Remove prose-invert since we're using transparent backgrounds
+            'dark:prose-invert',
             // Better markdown styling
             'prose-headings:mt-4 prose-headings:mb-2',
             'prose-p:my-2',

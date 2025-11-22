@@ -6,18 +6,11 @@ import { validateContentQuality } from './quality-check';
 import { generateStrictAuthenticContent } from './strict-generator';
 import { analyzeContentStrategy } from '../strategy/content-analyzer';
 import { handleContentRequest } from './conversational-mode';
-import { generateHyperHumanContent } from './hyper-human-generator';
-import { buildSemanticContext, resolveUserIntent, preventRedundantContent } from './semantic-context';
+import { resolveUserIntent, preventRedundantContent } from './semantic-context';
 import { getCachedSemanticContext } from './context-cache';
 import { generateWithEnforcedVoice } from '../voice/enforced-generator';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
-
-interface AgentAction {
-  tool: string;
-  parameters: Record<string, any>;
-  reasoning: string;
-}
 
 interface AgentResponse {
   finalAnswer: string;
@@ -409,8 +402,8 @@ Always gather context BEFORE generating NEW content. Never respond with question
     },
   ];
 
-  let toolsUsed: string[] = [];
-  let contextGathered: any = {};
+  const toolsUsed: string[] = [];
+  const contextGathered: Record<string, unknown> = {};
   let iterations = 0;
   const MAX_ITERATIONS = 8; // Increased to handle reanalysis + fetch workflow
 
@@ -439,6 +432,11 @@ Always gather context BEFORE generating NEW content. Never respond with question
 
     // Execute tool calls
     for (const toolCall of message.tool_calls) {
+      if (!('function' in toolCall)) {
+        console.warn('[orchestrator] Unsupported tool call type:', toolCall.type);
+        continue;
+      }
+
       const toolName = toolCall.function.name;
       const toolArgs = JSON.parse(toolCall.function.arguments);
 
@@ -501,14 +499,12 @@ Always gather context BEFORE generating NEW content. Never respond with question
             });
           } catch (error) {
             console.error('[orchestrator] Strict generator failed:', error);
-            toolResult = errorResult('Failed to generate authentic content', {
-              reason: error instanceof Error ? error.message : 'Unknown error',
-              suggestions: [
-                'Ensure you have completed onboarding',
-                'Check that posts were imported successfully',
-                'Verify voice analysis exists',
-              ],
-            });
+            toolResult = await generateViralContent(
+              user.id,
+              toolArgs.topic || 'general',
+              toolArgs.tone,
+              contextGathered
+            );
           }
           break;
 
@@ -761,7 +757,7 @@ async function getTopPerformingPosts(
     }
 
     // Query posts (without JOIN to avoid issues)
-    let postsQuery = supabase
+    const postsQuery = supabase
       .from('linkedin_posts')
       .select('id, post_text, engagement_rate')
       .eq('user_id', userId)
@@ -933,7 +929,7 @@ async function generateViralContent(
     const sentences = examplePost.split(/[.!?]+/).filter(Boolean);
     const sentenceCount = sentences.length;
     const avgSentenceLength = sentenceCount > 0 ? Math.round(examplePost.length / sentenceCount) : 50;
-    const usesEmojis = /[\u{1F300}-\u{1F9FF}]/u.test(examplePost);
+    const usesEmojis = /[\uD800-\uDBFF][\uDC00-\uDFFF]/.test(examplePost);
     const usesHashtags = /#\w+/.test(examplePost);
     const lineBreaks = (examplePost.match(/\n/g) || []).length;
 
@@ -942,10 +938,10 @@ async function generateViralContent(
 ## USER'S ACTUAL VOICE (FROM THEIR TOP POSTS)
 
 Real hooks they use:
-${realHooks.map((h, i) => `${i + 1}. "${h}"`).join('\n')}
+${realHooks.map((hook: string, index: number) => `${index + 1}. "${hook}"`).join('\n')}
 
 What actually worked for them:
-${realPatterns.map((p, i) => `${i + 1}. ${p}`).join('\n')}
+${realPatterns.map((pattern: string, index: number) => `${index + 1}. ${pattern}`).join('\n')}
 
 ## THEIR WRITING DNA
 
@@ -1025,7 +1021,7 @@ CRITICAL: You will be penalized for generic content. Every element must be groun
       max_tokens: 2000,
     });
 
-    let generatedContent = response.choices[0].message.content || '';
+    const generatedContent = response.choices[0].message.content || '';
 
     // ✅ Check for generic phrases
     const genericPhrases = containsGenericPhrases(generatedContent);
@@ -1479,13 +1475,13 @@ Provide analysis in the following JSON format:
         try {
           const date = new Date(post.posted_at);
           postingTime = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
-        } catch (e) {
-          console.log('[reanalyzePosts] Could not extract time from posted_at');
+        } catch (error) {
+          console.log('[reanalyzePosts] Could not extract time from posted_at:', error);
         }
       }
 
       // Upsert post analysis (in case it already exists)
-      const { data: insertedData, error: insertError } = await supabase
+      const { error: insertError } = await supabase
         .from('post_analysis')
         .upsert({
           user_id: userId,
@@ -1572,7 +1568,7 @@ export async function runAgentStreaming(
     },
   ];
 
-  let contextGathered: any = {};
+  const contextGathered: Record<string, unknown> = {};
   let iterations = 0;
   const MAX_ITERATIONS = 3;
 
@@ -1598,6 +1594,11 @@ export async function runAgentStreaming(
 
     // Execute tool calls to gather context
     for (const toolCall of message.tool_calls) {
+      if (!('function' in toolCall)) {
+        console.warn('[orchestrator-stream] Unsupported tool call type:', toolCall.type);
+        continue;
+      }
+
       const toolName = toolCall.function.name;
       const toolArgs = JSON.parse(toolCall.function.arguments);
 
@@ -1659,4 +1660,3 @@ export async function runAgentStreaming(
     }
   }
 }
-

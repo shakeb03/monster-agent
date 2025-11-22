@@ -1,12 +1,12 @@
 interface ApifyRunOptions {
   actorId: string;
-  input: Record<string, any>;
+  input: Record<string, unknown>;
   timeout?: number;
 }
 
 interface ApifyRunResult {
   success: boolean;
-  data?: any[];
+  data?: unknown[];
   error?: string;
 }
 
@@ -89,4 +89,3 @@ export class ApifyClient {
 }
 
 export const apifyClient = new ApifyClient(process.env.APIFY_API_KEY!);
-

@@ -1,6 +1,8 @@
 import { createAdminClient } from '@/lib/supabase/admin';
 import { extractVoiceDNA as extractVoiceDNAFromPosts, getEmergencyVoiceDNA, VoiceDNA } from './dna-extractor';
 
+export type { VoiceDNA } from './dna-extractor';
+
 export async function getCachedVoiceDNA(userId: string): Promise<VoiceDNA | null> {
   const supabase = createAdminClient();
 
@@ -90,4 +92,3 @@ export async function invalidateVoiceDNACache(userId: string): Promise<void> {
 
   console.log('[voice-cache] Cache invalidated');
 }
-
